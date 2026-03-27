@@ -6,7 +6,7 @@ from config import CHANEL_ID, ADMIN_IDS, BOT_URL
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff, keyboard_payment_method,
                       chanel_keyboard, keyboard_tariff_old, keyboard_inline_ref,
-                      create_kb)
+                      create_kb, keyboard_sub_after_free)
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
@@ -203,7 +203,7 @@ async def free_vpn_cb(callback: CallbackQuery):
     sub_url = await x3.sublink(user_id)
 
     await callback.message.answer(text=lexicon['buy_success'].format(time, sub_url),
-                                  reply_markup=keyboard_subscription(sub_url, None),
+                                  reply_markup=keyboard_sub_after_free(sub_url),
                                   disable_web_page_preview=True)
 
 

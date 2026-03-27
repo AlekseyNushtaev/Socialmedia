@@ -104,7 +104,7 @@ async def process_confirmed_payment(payload):
             try:
                 user_data = await sql.get_user(user_id)
                 if user_data and len(user_data) > 4:
-                    is_pay_null = user_data[4]
+                    is_pay_null = user_data[8]
                     ref_id_str = user_data[2]
 
                     if not is_pay_null and ref_id_str:

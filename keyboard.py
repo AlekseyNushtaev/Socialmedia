@@ -107,7 +107,7 @@ def keyboard_tariff_bonus():
         r_30="🤝 30 дней - 199 руб",
         r_90="✅ 90 дней - 539 руб (выгода -10%)",
         r_240="🏆 240 дней - 999 руб (выгода -40%)",
-        # r_white_30="📱 Мобильный тариф - 299 руб",
+        # r_white_30="📱 Мобильный тариф - 499 руб",
         free_vpn="✨ПОПРОБОВАТЬ 5 дней БЕСПЛАТНО✨",
         back_to_main="🔙 Назад",
     )
@@ -121,7 +121,7 @@ def keyboard_tariff():
         r_30="🤝 30 дней - 199 руб",
         r_90="✅ 90 дней - 539 руб (выгода -10%)",
         r_240="🏆 240 дней - 999 руб (выгода -40%)",
-        # r_white_30="📱 Мобильный тариф - 299 руб",
+        # r_white_30="📱 Мобильный тариф - 499 руб",
         back_to_main="🔙 Назад",
     )
 
@@ -134,7 +134,7 @@ def keyboard_tariff_trial():
         r_30="🤝 30 дней - 199 руб",
         r_90="✅ 90 дней - 539 руб (выгода -10%)",
         r_240="🏆 240 дней - 999 руб (выгода -40%)",
-        # r_white_30="📱 Мобильный тариф - 299 руб",
+        # r_white_30="📱 Мобильный тариф - 499 руб",
         back_to_main="🔙 Назад",
     )
 
@@ -165,7 +165,7 @@ def keyboard_gift_tariff():
         gift_r_30="🤝 30 дней - 199 руб",
         gift_r_90="✅ 90 дней - 539 руб (выгода -10%)",
         gift_r_240="🏆 240 дней - 999 руб (выгода -40%)",
-        # gift_r_white_30="📱 Мобильный тариф - 299 руб",
+        # gift_r_white_30="📱 Мобильный тариф - 499 руб",
         back_to_main="🔙 Назад",
     )
 
@@ -292,6 +292,29 @@ def keyboard_sub_after_buy(sub_url):
                     text="🎁 Подарить подписку",
                     callback_data="buy_gift",
                     style=STYLE_SUCCESS,
+                )
+            ],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
+        ]
+    )
+    return keyboard
+
+
+def keyboard_sub_after_free(sub_url):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📋 В личный кабинет",
+                    url=sub_url,
+                    style=STYLE_PRIMARY,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⚠️ Если страница не загружается",
+                    callback_data="import",
+                    style=STYLE_DANGER,
                 )
             ],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
