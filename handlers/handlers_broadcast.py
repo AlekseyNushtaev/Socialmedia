@@ -2,7 +2,7 @@ import urllib.parse
 
 from bot import sql
 from config import ADMIN_IDS
-from keyboard import create_kb, keyboard_tariff, STYLE_PRIMARY, STYLE_SUCCESS
+from keyboard import create_kb, keyboard_tariff, keyboard_tariff_trial, STYLE_PRIMARY, STYLE_SUCCESS
 from logging_config import logger
 import asyncio
 from aiogram import Router, Bot, F
@@ -148,17 +148,7 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
     # Получаем пользователей по выбранному параметру
     if selected_parameter == "all_users":
         user_ids = await sql.select_all_users()  # Получаем всех пользователей
-        keyboard_broadcast = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🌐 Наш сайт",
-                        url="https://4social.top",
-                        style=STYLE_PRIMARY,
-                    )
-                ]
-            ]
-        )
+        keyboard_broadcast = keyboard_tariff()
     elif selected_parameter == 'not_connected_subscribe_yes':
         user_ids = await sql.select_not_connected_subscribe_yes()
         keyboard_broadcast = create_kb(
