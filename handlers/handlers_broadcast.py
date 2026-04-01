@@ -152,18 +152,11 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="💰 Купить подписку",
-                        callback_data="buy_vpn",
-                        style=STYLE_SUCCESS,
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
                         text="🌐 Наш сайт",
                         url="https://4social.top",
                         style=STYLE_PRIMARY,
                     )
-                ],
+                ]
             ]
         )
     elif selected_parameter == 'not_connected_subscribe_yes':
