@@ -672,45 +672,75 @@ async def send_push_command(message: Message):
     else:
         await message.answer(f"Всего {len(candidates)} пользователей, удовлетворяющих условиям.")
 
-#     push_text = '''
-# 🥵 Это была DDoS-атака!
-#
-# Друзья, простите за временные неудобства. Сервис работает в штатном режиме.
-# Мы столкнулись с мощной DDoS-атакой, если у вас <b>не открывался личный кабинет — проблема уже решена.</b>
-#
-# 📱 Не можете настроить?
-# Если вы никак не могли разобраться с импортом конфигов — <b>смотрите видеоинструкцию</b>! Там всё разложено по полочкам.
-#
-# 🌐 Осталось только нажать кнопку "🌐 Подключить Ускоритель соцсетей" — и вы снова в деле.
-#     '''
-#
-#     success_count = 0
-#     fail_count = 0
-#
-#     for user_id in candidates:
-#         try:
-#             await x3.addClient(5, str(user_id), int(user_id))
-#             await bot.send_message(user_id,
-#                                    push_text,
-#                                    reply_markup=create_kb(
-#                                        1,
-#                                        styles={
-#                                            'video_faq': STYLE_PRIMARY,
-#                                            'connect_vpn': STYLE_PRIMARY,
-#                                        },
-#                                        video_faq='🎥 Видеоинструкция',
-#                                        connect_vpn='🌐 Подключить Ускоритель соцсетей',
-#                                    ))
-#             success_count += 1
-#             logger.info(f"Push отправлен пользователю {user_id}")
-#             await asyncio.sleep(0.05)
-#         except Exception as e:
-#             fail_count += 1
-#             logger.error(f"Ошибка отправки для {user_id}: {e}")
-#
-#     await message.answer(
-#         f"✅ Рассылка завершена.\n"
-#         f"👥 Найдено: {len(candidates)}\n"
-#         f"✅ Успешно: {success_count}\n"
-#         f"❌ Ошибок: {fail_count}"
-#     )
+    push_text = '''
+🥵 Это была DDoS-атака!
+
+Друзья, простите за временные неудобства. Сервис работает в штатном режиме.
+Мы столкнулись с мощной DDoS-атакой, если у вас <b>не открывался личный кабинет — проблема уже решена.</b>
+
+📱 Не можете настроить?
+Если вы никак не могли разобраться с импортом конфигов — <b>смотрите видеоинструкцию</b>! Там всё разложено по полочкам.
+
+🌐 Осталось только нажать кнопку "🌐 Подключить Ускоритель соцсетей" — и вы снова в деле.
+    '''
+
+    success_count = 0
+    fail_count = 0
+
+    for user_id in candidates:
+        try:
+            user_data = await x3.get_user_by_username(str(user_id))
+            if user_data:
+                logger.success(f'{user_id} уже в панели')
+                raw = user_data['response']
+                user = raw[0] if isinstance(raw, list) else raw
+                if not isinstance(user, dict):
+                    logger.error(f"send_push: неверный формат response для {user_id}")
+                    continue
+
+                expire_str = user.get('expireAt')
+                if expire_str:
+                    try:
+                        expire_dt = datetime.fromisoformat(expire_str.replace('Z', '+00:00'))
+                        await sql.update_subscription_end_date(user_id, expire_dt)
+                    except Exception as e:
+                        logger.error(f"send_push: парсинг expireAt для {user_id}: {e}")
+
+                short_uuid = user.get('shortUuid')
+                if short_uuid:
+                    username_panel = user.get('username') or ''
+                    is_white = 'white' in username_panel
+                    try:
+                        if is_white:
+                            await sql.update_white_subscription(user_id, short_uuid)
+                        else:
+                            await sql.update_subscribtion(user_id, short_uuid)
+                    except Exception as e:
+                        logger.error(f"send_push: запись shortUuid для {user_id}: {e}")
+
+                continue
+            await x3.addClient(5, str(user_id), int(user_id))
+            await bot.send_message(user_id,
+                                   push_text,
+                                   reply_markup=create_kb(
+                                       1,
+                                       styles={
+                                           'video_faq': STYLE_PRIMARY,
+                                           'connect_vpn': STYLE_PRIMARY,
+                                       },
+                                       video_faq='🎥 Видеоинструкция',
+                                       connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                                   ))
+            success_count += 1
+            logger.info(f"Push отправлен пользователю {user_id}")
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            fail_count += 1
+            logger.error(f"Ошибка отправки для {user_id}: {e}")
+
+    await message.answer(
+        f"✅ Рассылка завершена.\n"
+        f"👥 Найдено: {len(candidates)}\n"
+        f"✅ Успешно: {success_count}\n"
+        f"❌ Ошибок: {fail_count}"
+    )
