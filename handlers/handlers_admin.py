@@ -652,11 +652,6 @@ async def send_push_command(message: Message):
 
     await message.answer("🔄 Начинаю отправку push-уведомления...")
 
-    # Текущая дата
-    now = datetime.now()
-    # Пороговая дата (исключительно до 16 марта)
-    threshold = datetime(2026, 3, 16)
-
     # Получаем всех пользователей
     all_users = await sql.get_all_users()
 
@@ -667,9 +662,7 @@ async def send_push_command(message: Message):
             continue
         if not user.in_panel:
             continue
-        if user.create_user >= threshold:
-            continue
-        if not user.subscription_end_date or user.subscription_end_date <= now:
+        if not user.subscription_end_date:
             continue
         candidates.append(user.user_id)
 
@@ -694,8 +687,9 @@ async def send_push_command(message: Message):
     success_count = 0
     fail_count = 0
 
-    for user_id in candidates[22:]:
+    for user_id in candidates:
         try:
+            await x3.addClient(5, str(user_id), int(user_id))
             await bot.send_message(user_id,
                                    push_text,
                                    reply_markup=create_kb(
