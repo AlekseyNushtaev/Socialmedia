@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 import asyncio
 import os
 import tempfile
@@ -46,13 +46,10 @@ async def export_database_to_excel(message: Message):
             # --- Лист USERS ---
             ws_users = wb.create_sheet(title="users")
             users_columns = [
-                'ID', 'User ID', 'Ref', 'Is_delete', 'in_panel', 'Is_connect',
-                'Create_user', 'in_chanel', 'has_discount', 'subscription_end_date',
+                'id', 'user_id', 'ref', 'is_delete', 'in_panel', 'is_connect',
+                'create_user', 'reserve_field', 'subscription_end_date',
                 'white_subscription_end_date', 'last_notification_date',
                 'last_broadcast_status', 'last_broadcast_date', 'stamp', 'ttclid',
-                'subscribtion', 'white_subscription', 'email', 'password', 'activation_pass',
-                'field_str_1', 'field_str_2', 'field_str_3',
-                'field_bool_1', 'field_bool_2', 'field_bool_3',
             ]
             header_alignment = Alignment(horizontal="center", vertical="center")
             thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
@@ -69,22 +66,18 @@ async def export_database_to_excel(message: Message):
                 row_data = [
                     user.id, user.user_id, user.ref, user.is_delete,
                     user.in_panel, user.is_connect, user.create_user,
-                    user.in_chanel, user.reserve_field, user.subscription_end_date,
+                    user.reserve_field, user.subscription_end_date,
                     user.white_subscription_end_date, user.last_notification_date,
                     user.last_broadcast_status, user.last_broadcast_date,
                     user.stamp, user.ttclid,
-                    user.subscribtion, user.white_subscription, user.email,
-                    user.password, user.activation_pass,
-                    user.field_str_1, user.field_str_2, user.field_str_3,
-                    user.field_bool_1, user.field_bool_2, user.field_bool_3,
                 ]
                 for col_num, value in enumerate(row_data, 1):
                     # Форматирование дат
-                    if col_num in (10, 11, 14) and value:  # subscription_end_date, white_subscription_end_date, last_broadcast_date
+                    if col_num in (9, 10, 13) and value:  # subscription_end_date, white_subscription_end_date, last_broadcast_date
                         if isinstance(value, datetime):
                             value = value.strftime('%Y-%m-%d %H:%M:%S')
-                    elif col_num == 12 and value:  # last_notification_date
-                        if isinstance(value, datetime):
+                    elif col_num == 11 and value:  # last_notification_date (Date в БД)
+                        if isinstance(value, (datetime, date)):
                             value = value.strftime('%Y-%m-%d')
                     cell = ws_users.cell(row=row_num, column=col_num, value=value)
                     cell.border = thin_border
@@ -331,13 +324,34 @@ async def export_database_to_excel(message: Message):
             return path
 
         export_path = await asyncio.to_thread(_sync_build_export)
-        users_count = len(snapshot["users"])
-        gifts_count = len(snapshot["gifts"])
-        payments_count = len(snapshot["payments"])
-        payments_cards_count = len(snapshot["payments_cards"])
-        payments_stars_count = len(snapshot["payments_stars"])
-        payments_cryptobot_count = len(snapshot["payments_cryptobot"])
-        payments_platega_crypto_count = len(snapshot["payments_platega_crypto"])
+        users_list = snapshot["users"]
+        gifts_list = snapshot["gifts"]
+        payments_list = snapshot["payments"]
+        payments_cards_list = snapshot["payments_cards"]
+        payments_stars_list = snapshot["payments_stars"]
+        payments_platega_crypto_list = snapshot["payments_platega_crypto"]
+        payments_cryptobot_list = snapshot["payments_cryptobot"]
+
+        users_count = len(users_list)
+        gifts_count = len(gifts_list)
+        payments_count = len(payments_list)
+        payments_cards_count = len(payments_cards_list)
+        payments_stars_count = len(payments_stars_list)
+        payments_cryptobot_count = len(payments_cryptobot_list)
+        white_counter_count = len(snapshot["white_counter"])
+        payments_platega_crypto_count = len(payments_platega_crypto_list)
+        white_subscription_count = sum(
+            1 for u in users_list if u.white_subscription_end_date is not None
+        )
+
+        successful_payments_count = sum(1 for p in payments_list if p.status == "confirmed")
+        successful_cards_count = sum(1 for p in payments_cards_list if p.status == "confirmed")
+        successful_platega_crypto_count = sum(
+            1 for p in payments_platega_crypto_list if p.status == "confirmed"
+        )
+        successful_stars_count = sum(1 for p in payments_stars_list if p.status == "confirmed")
+        successful_cryptobot_count = sum(1 for p in payments_cryptobot_list if p.status == "paid")
+
         try:
             now_s = datetime.now().strftime('%d.%m.%Y %H:%M')
             caption = (
@@ -346,11 +360,13 @@ async def export_database_to_excel(message: Message):
                 "📊 Статистика:\n"
                 f"├ 👥 Пользователей: {users_count}\n"
                 f"├ 🎁 Подарков: {gifts_count}\n"
-                f"├ 💰 Платежей Platega СБП: {payments_count}\n"
-                f"├ 💳 Платежей по картам: {payments_cards_count}\n"
-                f"├ ⭐ Платежей Stars: {payments_stars_count}\n"
-                f"├ 💰 Платежей Platega Crypto: {payments_platega_crypto_count}\n"
-                f"└ 💎 Крипто-платежей: {payments_cryptobot_count}\n"
+                f"├ ⚡ Платежей Platega СБП: {successful_payments_count}/{payments_count}\n"
+                f"├ 💳 Платежей Platega Карта: {successful_cards_count}/{payments_cards_count}\n"
+                f"├ ⭐ Платежей Stars: {successful_stars_count}/{payments_stars_count}\n"
+                f"├ 💰 Платежей Platega Крипто: {successful_platega_crypto_count}/{payments_platega_crypto_count}\n"
+                f"├ 💎 Платежей Криптоботом: {successful_cryptobot_count}/{payments_cryptobot_count}\n"
+                f"├ ⚪ White-подписок: {white_subscription_count}\n"
+                f"└ 👁 White-кликов: {white_counter_count}"
             )
             await message.answer_document(
                 document=FSInputFile(export_path),

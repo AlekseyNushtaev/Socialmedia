@@ -9,6 +9,9 @@ from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, Payments
     WhiteCounter, PaymentsCards, PaymentsPlategaCrypto
 from logging_config import logger
 
+# Пакетная обработка для /stat: меньше 999 — лимит переменных SQLite в одном запросе.
+_STAT_IN_CHUNK = 900
+
 
 class AsyncSQL:
     def __init__(self):
@@ -418,8 +421,8 @@ class AsyncSQL:
         """
         Возвращает статистику по пользователям, у которых Ref == arg,
         если таких нет – по пользователям с stamp == arg.
-        Возвращает (total, with_sub, with_tarif, total_payments, source)
-        или (None, None, None, None, None) если нет совпадений.
+        Возвращает (total, with_sub, with_tarif, with_tarif_not_blocked, total_payments, source)
+        или (None, ...) если нет совпадений.
         """
         # 1. Ищем по Ref
         users = await self.select_user_by_parameter('ref', arg)
@@ -435,34 +438,40 @@ class AsyncSQL:
         total = len(users)
         with_sub = 0
         with_tarif = 0
-        with_tarif_not_block = 0
-
-        for user_id in users:
-            user_data = await self.get_user(user_id)
-            if user_data:
-                # subscription_end_date — индекс 9, is_connect — индекс 5
-                if user_data[9] is not None:
-                    with_sub += 1
-                if user_data[5]:  # is_connect
-                    with_tarif += 1
-                if user_data[5] and not user_data[3]:
-                    with_tarif_not_block += 1
-        with_tarif = with_tarif // 2
-        with_tarif_not_block = with_tarif_not_block // 2
-
-        # Сумма подтверждённых платежей этих пользователей
+        with_tarif_not_blocked = 0
         total_payments = 0
-        if users:
-            async with self.session_factory() as session:
-                stmt = select(func.coalesce(func.sum(Payments.amount), 0)).where(
-                    Payments.user_id.in_(users),
-                    Payments.status == 'confirmed'
-                )
-                result = await session.execute(stmt)
-                total_payments = result.scalar() or 0
-                total_payments = total_payments // 2
 
-        return total, with_sub, with_tarif, with_tarif_not_block, total_payments, source
+        async with self.session_factory() as session:
+            for i in range(0, len(users), _STAT_IN_CHUNK):
+                chunk = users[i : i + _STAT_IN_CHUNK]
+                stmt_users = select(
+                    Users.subscription_end_date,
+                    Users.is_connect,
+                    Users.is_delete,
+                ).where(Users.user_id.in_(chunk))
+                result = await session.execute(stmt_users)
+                for sub_end, is_connect, is_delete in result.all():
+                    if sub_end is not None:
+                        with_sub += 1
+                    if is_connect:
+                        with_tarif += 1
+                    if is_connect and not is_delete:
+                        with_tarif_not_blocked += 1
+
+            with_tarif //= 2
+            with_tarif_not_blocked //= 2
+
+            for i in range(0, len(users), _STAT_IN_CHUNK):
+                chunk = users[i : i + _STAT_IN_CHUNK]
+                stmt_pay = select(func.coalesce(func.sum(Payments.amount), 0)).where(
+                    Payments.user_id.in_(chunk),
+                    Payments.status == 'confirmed',
+                )
+                total_payments += (await session.execute(stmt_pay)).scalar() or 0
+
+        total_payments //= 2
+
+        return total, with_sub, with_tarif, with_tarif_not_blocked, total_payments, source
 
     def get_parameters(self) -> List[str]:
         """Возвращает список доступных параметров для фильтрации пользователей."""

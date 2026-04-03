@@ -214,7 +214,7 @@ def _sync_build_analytics_excel(monthly_data: dict, daily_data_by_month: dict) -
 
 @router.message(Command(commands=['stat']))
 async def stat_command(message: Message):
-    """Статистика по пользователям с указанным Ref или stamp (только для админов)."""
+    """Статистика по пользователям с указанным Ref или stamp (админы и CHECKER_IDS)."""
     if message.from_user.id not in ADMIN_IDS | CHECKER_IDS:
         return
 
@@ -224,12 +224,14 @@ async def stat_command(message: Message):
         return
 
     arg = args[1].strip()
-    total, with_sub, is_connect, is_connect_not_block, total_payments, source = await sql.get_stat_by_ref_or_stamp(arg)
+    total, with_sub, with_tarif, with_tarif_not_blocked, total_payments, source = await sql.get_stat_by_ref_or_stamp(arg)
 
     if total is None:
         await message.answer(f"{arg} - нет совпадений")
     else:
-        await message.answer(f"{arg} {total} {with_sub} {is_connect} {is_connect_not_block} - {total_payments} руб")
+        await message.answer(
+            f"{arg} {total} {with_sub} {with_tarif} {with_tarif_not_blocked} - {total_payments} руб"
+        )
 
 
 @router.message(Command(commands=['anal_export']))
