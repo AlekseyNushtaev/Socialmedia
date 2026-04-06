@@ -74,7 +74,7 @@ async def send_push_cron(debug: bool = False):
                             if video_flag:
                                 await bot.send_video(
                                     chat_id=user_id,
-                                    video='BAACAgIAAxkBAAECdlppx-fOOvQHbjqkXBjIrkT3nbv5oQACpJcAAg2AQUpn3JF_9sjbLzoE',
+                                    video='BAACAgIAAxkBAAELSgVp04qNlUHBsPO16QJS2mF_H-yq4QACp6UAAvgneEp4HgajZ9ywpzsE',
                                     caption=message_text,
                                     reply_markup=keyboard_broadcast_video
                                 )
@@ -121,7 +121,7 @@ async def send_push_cron(debug: bool = False):
                             if video_flag:
                                 await bot.send_video(
                                     chat_id=user_id,
-                                    video='BAACAgIAAxkBAAECdlppx-fOOvQHbjqkXBjIrkT3nbv5oQACpJcAAg2AQUpn3JF_9sjbLzoE',
+                                    video='BAACAgIAAxkBAAELSgVp04qNlUHBsPO16QJS2mF_H-yq4QACp6UAAvgneEp4HgajZ9ywpzsE',
                                     caption=message_text,
                                     reply_markup=keyboard_broadcast_video
                                 )
