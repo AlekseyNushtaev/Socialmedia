@@ -2,7 +2,7 @@ import random
 from datetime import datetime, timezone
 
 from bot import sql, x3, bot
-from config import ADMIN_IDS
+from config import ADMIN_IDS, CHECKER_ID
 from keyboard import create_kb, STYLE_PRIMARY
 from logging_config import logger
 import asyncio
@@ -300,14 +300,15 @@ async def sync_panel(message: Message):
     not_found = 0        # не найдено в панели (остались в списке)
 
     # 4. Обрабатываем каждого пользователя из списка на синхронизацию
-    await bot.send_message(1012882762,
-                           'Добрый день. Мы создали Вам личный кабинет и начислили 5 дней пробного '
-                           'доступа.\nПерейдите по ссылке, нажав на кнопку 🌐 Подключить Ускоритель соцсетей',
-                           reply_markup=create_kb(
-                               1,
-                               styles={'connect_vpn': STYLE_PRIMARY},
-                               connect_vpn='🌐 Подключить Ускоритель соцсетей',
-                           ))
+    if CHECKER_ID is not None:
+        await bot.send_message(CHECKER_ID,
+                               'Добрый день. Мы создали Вам личный кабинет и начислили 5 дней пробного '
+                               'доступа.\nПерейдите по ссылке, нажав на кнопку 🌐 Подключить Ускоритель соцсетей',
+                               reply_markup=create_kb(
+                                   1,
+                                   styles={'connect_vpn': STYLE_PRIMARY},
+                                   connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                               ))
 
     for user_id in users_for_sync:
         # Проверяем, есть ли пользователь в панели
@@ -559,7 +560,7 @@ async def check_users_command(message: Message):
 async def send_gift_command(message: Message):
     """Отправляет подарок (3 дня подписки) пользователям, созданным 16 или 17 марта 2026,
     у которых in_panel=True, is_connect=False, is_delete=False."""
-    if message.from_user.id != 1012882762:
+    if CHECKER_ID is None or message.from_user.id != CHECKER_ID:
         return
 
     await message.answer("🔄 Начинаю отправку подарков...")
@@ -571,7 +572,7 @@ async def send_gift_command(message: Message):
     all_users = await sql.get_all_users()  # список объектов Users
 
     # Фильтруем вручную
-    candidates = [1012882762]
+    candidates = [CHECKER_ID]
     for user in all_users:
         if user.is_delete:
             continue
@@ -647,7 +648,7 @@ async def send_gift_command(message: Message):
 async def send_push_command(message: Message):
     """Отправляет информационное сообщение пользователям, созданным до 16 марта 2026,
     с активной подпиской (in_panel=True, subscription_end_date > now, is_delete=False)."""
-    if message.from_user.id != 1012882762:
+    if CHECKER_ID is None or message.from_user.id != CHECKER_ID:
         return
 
     await message.answer("🔄 Начинаю отправку push-уведомления...")
@@ -656,7 +657,7 @@ async def send_push_command(message: Message):
     all_users = await sql.get_all_users()
 
     # Фильтруем
-    candidates = [1012882762]
+    candidates = [CHECKER_ID]
     for user in all_users:
         if user.is_delete:
             continue
