@@ -78,6 +78,19 @@ def _wata_amount_rub(val: str) -> float:
     return round(x, 2)
 
 
+def wata_transactions_status_counts(items: list) -> Dict[str, int]:
+    """Счётчики по статусам строк Payment в ответе WATA (для логов)."""
+    counts: Dict[str, int] = {}
+    for i in items:
+        kind = (i.get("kind") or i.get("Kind") or "").strip()
+        if kind.lower() != "payment":
+            continue
+        raw = (i.get("status") or i.get("Status") or "").strip()
+        s = raw.lower() if raw else "?"
+        counts[s] = counts.get(s, 0) + 1
+    return counts
+
+
 def wata_order_payment_state(items: list, expect_type: str) -> str:
     """
     expect_type: SBP | CardCrypto
