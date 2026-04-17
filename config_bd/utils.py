@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import select, update, func, or_, and_
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Tuple, Dict, Any
 
 from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, PaymentsCryptobot, PaymentsStars, Online, \
@@ -264,8 +264,7 @@ class AsyncSQL:
                 Users.in_panel == True,
                 Users.is_connect == False,
                 Users.is_delete == False,
-                Users.subscription_end_date > current_time,
-                (Users.last_broadcast_date.is_(None)) | (func.date(Users.last_broadcast_date) != today)
+                Users.subscription_end_date > current_time
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
@@ -273,15 +272,12 @@ class AsyncSQL:
     async def select_not_connected_subscribe_off(self):
         async with self.session_factory() as session:
             current_time = datetime.now()
-            today = datetime.now().date()
             stmt = select(Users.user_id).where(
                 Users.in_panel == True,
                 Users.is_connect == False,
                 Users.is_delete == False,
                 (Users.subscription_end_date < current_time) |
-                (Users.subscription_end_date.is_(None)),
-                (Users.last_broadcast_date.is_(None)) |
-                (func.date(Users.last_broadcast_date) != today)
+                (Users.subscription_end_date.is_(None))
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
@@ -289,15 +285,12 @@ class AsyncSQL:
     async def select_connected_subscribe_off(self):
         async with self.session_factory() as session:
             current_time = datetime.now()
-            today = datetime.now().date()
             stmt = select(Users.user_id).where(
                 Users.in_panel == True,
                 Users.is_connect == True,
                 Users.is_delete == False,
                 (Users.subscription_end_date < current_time) |
-                (Users.subscription_end_date.is_(None)),
-                (Users.last_broadcast_date.is_(None)) |
-                (func.date(Users.last_broadcast_date) != today)
+                (Users.subscription_end_date.is_(None))
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
@@ -305,27 +298,21 @@ class AsyncSQL:
     async def select_connected_subscribe_yes(self):
         async with self.session_factory() as session:
             current_time = datetime.now()
-            today = datetime.now().date()
             stmt = select(Users.user_id).where(
                 Users.in_panel == True,
                 Users.is_connect == True,
                 Users.is_delete == False,
-                Users.subscription_end_date > current_time,
-                (Users.last_broadcast_date.is_(None)) |
-                (func.date(Users.last_broadcast_date) != today)
+                Users.subscription_end_date > current_time
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
 
     async def select_subscribe_off(self):
         async with self.session_factory() as session:
-            today = datetime.now().date()
             stmt = select(Users.user_id).where(
                 Users.in_panel == False,
                 Users.is_connect == False,
-                Users.is_delete == False,
-                (Users.last_broadcast_date.is_(None)) |
-                (func.date(Users.last_broadcast_date) != today)
+                Users.is_delete == False
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
@@ -333,12 +320,9 @@ class AsyncSQL:
 
     async def select_subscribe_yes(self):
         async with self.session_factory() as session:
-            today = datetime.now().date()
             stmt = select(Users.user_id).where(
                 Users.in_panel == True,
-                Users.is_delete == False,
-                (Users.last_broadcast_date.is_(None)) |
-                (func.date(Users.last_broadcast_date) != today)
+                Users.is_delete == False
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
@@ -371,6 +355,121 @@ class AsyncSQL:
                 Users.is_delete == False,
                 Users.user_id.notin_(paid_subq)
             )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
+
+    def _build_broadcast_where(self, category: str, exclude_today: bool):
+        """
+        Условие выборки пользователей для рассылки.
+        exclude_today: только те, у кого last_broadcast_date пусто или дата (UTC) не сегодня.
+        """
+        current_time = datetime.now()
+        today_d = datetime.now(timezone.utc).date()
+        skip_today_cond = or_(
+            Users.last_broadcast_date.is_(None),
+            func.date(Users.last_broadcast_date) != today_d,
+        )
+
+        def wrap(base):
+            return and_(base, skip_today_cond) if exclude_today else base
+
+        if category == "all_users":
+            return wrap(Users.is_delete == False)
+        if category == "not_connected_subscribe_yes":
+            return wrap(
+                and_(
+                    Users.in_panel == True,
+                    Users.is_connect == False,
+                    Users.is_delete == False,
+                    Users.subscription_end_date > current_time,
+                )
+            )
+        if category == "not_connected_subscribe_off":
+            return wrap(
+                and_(
+                    Users.in_panel == True,
+                    Users.is_connect == False,
+                    Users.is_delete == False,
+                    or_(
+                        Users.subscription_end_date < current_time,
+                        Users.subscription_end_date.is_(None),
+                    ),
+                )
+            )
+        if category == "connected_subscribe_off":
+            return wrap(
+                and_(
+                    Users.in_panel == True,
+                    Users.is_connect == True,
+                    Users.is_delete == False,
+                    or_(
+                        Users.subscription_end_date < current_time,
+                        Users.subscription_end_date.is_(None),
+                    ),
+                )
+            )
+        if category == "connected_subscribe_yes":
+            return wrap(
+                and_(
+                    Users.in_panel == True,
+                    Users.is_connect == True,
+                    Users.is_delete == False,
+                    Users.subscription_end_date > current_time,
+                )
+            )
+        if category == "not_subscribed":
+            return wrap(
+                and_(
+                    Users.in_panel == False,
+                    Users.is_connect == False,
+                    Users.is_delete == False,
+                )
+            )
+        if category == "connected_never_paid":
+            paid_subq = (
+                select(Payments.user_id)
+                .where(Payments.status == "confirmed")
+                .union(
+                    select(PaymentsStars.user_id).where(PaymentsStars.status == "confirmed"),
+                    select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == "paid"),
+                    select(PaymentsCards.user_id).where(PaymentsCards.status == "confirmed"),
+                    select(PaymentsPlategaCrypto.user_id).where(PaymentsPlategaCrypto.status == "confirmed"),
+                    select(PaymentsWataSBP.user_id).where(PaymentsWataSBP.status == "confirmed"),
+                    select(PaymentsWataCard.user_id).where(PaymentsWataCard.status == "confirmed"),
+                )
+                .subquery()
+            )
+            return wrap(
+                and_(
+                    Users.is_connect == True,
+                    Users.is_delete == False,
+                    Users.user_id.notin_(paid_subq),
+                )
+            )
+        if category == "subscribed_all":
+            return wrap(
+                and_(
+                    Users.in_panel == True,
+                    Users.subscription_end_date != None,
+                    Users.is_delete == False,
+                )
+            )
+        return None
+
+    async def count_users_for_broadcast(self, category: str, exclude_today: bool) -> int:
+        where_clause = self._build_broadcast_where(category, exclude_today)
+        if where_clause is None:
+            return 0
+        async with self.session_factory() as session:
+            stmt = select(func.count()).select_from(Users).where(where_clause)
+            return int((await session.execute(stmt)).scalar_one())
+
+    async def select_user_ids_for_broadcast(self, category: str, exclude_today: bool) -> List[int]:
+        where_clause = self._build_broadcast_where(category, exclude_today)
+        if where_clause is None:
+            return []
+        async with self.session_factory() as session:
+            stmt = select(Users.user_id).where(where_clause)
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
 

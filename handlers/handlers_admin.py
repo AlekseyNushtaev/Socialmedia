@@ -745,3 +745,113 @@ async def send_push_command(message: Message):
         f"✅ Успешно: {success_count}\n"
         f"❌ Ошибок: {fail_count}"
     )
+
+
+_NEW_PANEL_SQUAD_1 = "xxx"
+_NEW_PANEL_SQUAD_2 = "yyy"
+_NEW_PANEL_WHITE_SQUAD = "zzz"
+_NEW_PANEL_BULK_BATCH = 500
+
+
+async def _new_panel_bulk_uuids(uuids: list, squad: str) -> tuple[bool, int]:
+    """Разбивает UUID на батчи и вызывает bulk_update_internal_squads."""
+    total_affected = 0
+    all_ok = True
+    for off in range(0, len(uuids), _NEW_PANEL_BULK_BATCH):
+        batch = uuids[off : off + _NEW_PANEL_BULK_BATCH]
+        ok, aff = await x3.bulk_update_internal_squads(batch, [squad])
+        total_affected += aff
+        if not ok:
+            all_ok = False
+        await asyncio.sleep(0.15)
+    return all_ok, total_affected
+
+
+@router.message(Command(commands=["new_panel"]))
+async def new_panel_command(message: Message):
+    """Массовое обновление internal squads: white → white_squad, цифровые username → squad_1/squad_2."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    try:
+        users = await x3.get_all_panel()
+        total_panel = len(users)
+
+        casual_list: list[dict] = []
+        white_list: list[dict] = []
+        skipped_no_username = 0
+        skipped_other = 0
+
+        for u in users:
+            un = u.get("username")
+            if un is None or str(un).strip() == "":
+                skipped_no_username += 1
+                continue
+            s = str(un)
+            if "white" in s:
+                white_list.append(u)
+            elif s.isdigit():
+                casual_list.append(u)
+            else:
+                skipped_other += 1
+
+        white_uuids = [str(u["uuid"]) for u in white_list if u.get("uuid")]
+        white_no_uuid = len(white_list) - len(white_uuids)
+        casual_by_squad: dict[str, list[str]] = {_NEW_PANEL_SQUAD_1: [], _NEW_PANEL_SQUAD_2: []}
+        casual_no_uuid = 0
+        for u in casual_list:
+            uid = u.get("uuid")
+            if not uid:
+                casual_no_uuid += 1
+                continue
+            sq = random.choice([_NEW_PANEL_SQUAD_1, _NEW_PANEL_SQUAD_2])
+            casual_by_squad[sq].append(str(uid))
+
+        classified = len(casual_list) + len(white_list)
+        bulk_total = len(white_uuids) + len(casual_by_squad[_NEW_PANEL_SQUAD_1]) + len(
+            casual_by_squad[_NEW_PANEL_SQUAD_2]
+        )
+        await message.answer(
+            f"📋 /new_panel\n"
+            f"В панели записей: {total_panel}\n"
+            f"По username: обычные — {len(casual_list)}, white — {len(white_list)} "
+            f"(всего классифицировано {classified})\n"
+            f"К bulk-обновлению (есть uuid): {bulk_total}\n"
+            f"Пропуск: без username — {skipped_no_username}, иной формат username — {skipped_other}\n"
+            f"🔄 Начинаю обновление сквадов…"
+        )
+
+        white_ok, white_aff = await _new_panel_bulk_uuids(white_uuids, _NEW_PANEL_WHITE_SQUAD)
+
+        casual_ok = True
+        casual_aff = 0
+        n_s1 = len(casual_by_squad[_NEW_PANEL_SQUAD_1])
+        n_s2 = len(casual_by_squad[_NEW_PANEL_SQUAD_2])
+        for sq, uuids in casual_by_squad.items():
+            if not uuids:
+                continue
+            ok, aff = await _new_panel_bulk_uuids(uuids, sq)
+            casual_aff += aff
+            if not ok:
+                casual_ok = False
+
+        report = (
+            f"✅ /new_panel — отчёт\n"
+            f"White: UUID {len(white_uuids)}, affected Σ={white_aff}, "
+            f"{'ok' if white_ok else 'были ошибки (см. лог)'}\n"
+            f"Casual: squad_1 — {n_s1} юз., squad_2 — {n_s2} юз. "
+            f"(random_choice между ними), affected Σ={casual_aff}, "
+            f"{'ok' if casual_ok else 'были ошибки (см. лог)'}\n"
+        )
+        if white_no_uuid:
+            report += f"White без uuid в панели: {white_no_uuid}\n"
+        if casual_no_uuid:
+            report += f"Casual без uuid в панели: {casual_no_uuid}\n"
+        await message.answer(report)
+        logger.info(
+            f"Админ {message.from_user.id} /new_panel: white={len(white_uuids)} casual={len(casual_list)} "
+            f"white_ok={white_ok} casual_ok={casual_ok}"
+        )
+    except Exception as e:
+        logger.exception("Ошибка в /new_panel")
+        await message.answer(f"❌ Ошибка: {str(e)}")

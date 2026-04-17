@@ -404,7 +404,9 @@ async def inline_partner(inline_query: InlineQuery):
             disable_web_page_preview=False
         ),
         reply_markup=keyboard_inline_ref(user_id),
-        thumb_url="https://img.freepik.com/premium-photo/glowing-blue-neon-wifi-signal-icon-dark-background_989822-6238.jpg?semt=ais_hybrid"  # опционально: иконка
+        thumb_url="https://img.freepik.com/premium-photo/glowing-blue-neon-wifi-signal-icon-dark-background_989822-6238.jpg?semt=ais_hybrid",  # опционально: иконка
+        thumb_width=50,
+        thumb_height=50,
     )
 
     # Отправляем результат обратно в Telegram
