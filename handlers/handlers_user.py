@@ -6,7 +6,7 @@ from config import CHANEL_ID, ADMIN_IDS, BOT_URL
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff, keyboard_payment_method,
                       chanel_keyboard, keyboard_tariff_old, keyboard_inline_ref,
-                      create_kb, keyboard_sub_after_free)
+                      create_kb, keyboard_sub_after_free, STYLE_PRIMARY)
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
@@ -17,6 +17,9 @@ from lexicon import lexicon
 
 
 router: Router = Router()
+
+_TRIAL_RETURN_GET_CB = "trial_return_get"
+_USER_TUPLE_FIELD_BOOL_3 = 26
 
 
 # Этот хэндлер срабатывает на команду /start
@@ -162,6 +165,37 @@ async def direct_connect_vpn_cb(callback: CallbackQuery):
         disable_web_page_preview=True
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == _TRIAL_RETURN_GET_CB)
+async def trial_return_get_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    user_data = await sql.get_user(uid)
+    if user_data is None:
+        await callback.answer("Сначала нажмите /start в боте.", show_alert=True)
+        return
+
+    if user_data[_USER_TUPLE_FIELD_BOOL_3]:
+        await callback.answer("Вы уже взяли свой триал!", show_alert=True)
+        return
+
+    await callback.answer()
+    ok = await x3.updateClient(7, str(uid), uid)
+    if not ok:
+        await callback.message.answer(
+            "Не удалось начислить дни. Попробуйте позже или напишите в поддержку."
+        )
+        return
+
+    await sql.update_field_bool_3(uid, True)
+    await callback.message.answer(
+        "🎉 Поздравляем! Вы получили 7 триальных дней доступа к Ускорителю соцсетей! ✨",
+        reply_markup=create_kb(
+            1,
+            styles={"connect_vpn": STYLE_PRIMARY},
+            connect_vpn="🌐 Подключить Ускоритель соцсетей",
+        ),
+    )
 
 
 @router.callback_query(F.data.in_({'r_7', 'r_30', 'r_90', 'r_240', 'r_white_30'}))

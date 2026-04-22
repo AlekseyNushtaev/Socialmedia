@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select, update, func, or_, and_
+from sqlalchemy import select, update, func, or_, and_, cast, Date
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Tuple, Dict, Any
@@ -223,6 +223,12 @@ class AsyncSQL:
             await session.execute(stmt)
             await session.commit()
 
+    async def update_field_bool_3(self, user_id: int, value: bool):
+        async with self.session_factory() as session:
+            stmt = update(Users).where(Users.user_id == user_id).values(field_bool_3=value)
+            await session.execute(stmt)
+            await session.commit()
+
     async def get_last_notification_date(self, user_id: int) -> Optional[date]:
         async with self.session_factory() as session:
             stmt = select(Users.last_notification_date).where(Users.user_id == user_id)
@@ -244,6 +250,26 @@ class AsyncSQL:
     async def select_all_users(self) -> List[int]:
         async with self.session_factory() as session:
             stmt = select(Users.user_id).where(Users.is_delete == False)
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
+
+    async def SELECT_USER_IDS_PANEL_EXPIRED_REGULAR_SUBSCRIPTION(self) -> List[int]:
+        """В панели, не удалены, обычная подписка по календарю UTC истекла или даты нет."""
+        today_utc = datetime.now(timezone.utc).date()
+        expired = or_(
+            Users.subscription_end_date.is_(None),
+            cast(Users.subscription_end_date, Date) < today_utc,
+        )
+        async with self.session_factory() as session:
+            stmt = (
+                select(Users.user_id)
+                .where(
+                    Users.is_delete == False,
+                    Users.in_panel == True,
+                    expired,
+                )
+                .order_by(Users.user_id)
+            )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
 
