@@ -30,7 +30,7 @@ _ADD7ALL_PROMO_TEXT = '''
 _ADD7ALL_TRIAL_KB = create_kb(
     1,
     styles={"trial_return_get": STYLE_SUCCESS},
-    trial_return_get="🔥Получить ТРИАЛ",
+    trial_return_get="🔥Получить 7 дней",
 )
 
 _MSK = timezone(timedelta(hours=3))
