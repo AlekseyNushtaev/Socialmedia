@@ -13,6 +13,16 @@ from logging_config import logger
 # Пакетная обработка для /stat: меньше 999 — лимит переменных SQLite в одном запросе.
 _STAT_IN_CHUNK = 900
 
+
+def _stat_cryptobot_to_rub(currency: str, amount_str: str) -> Optional[int]:
+    """Соответствие суммы Cryptobot тарифу в рублях (как handlers_statistic.convert_crypto_to_rub)."""
+    mapping = {
+        "TON": {"0.9": 99, "2.5": 269, "2.8": 299, "4.6": 499},
+        "USDT": {"1.3": 99, "3.5": 269, "4.0": 299, "6.5": 499},
+    }
+    return mapping.get(currency, {}).get(amount_str)
+
+
 _BILLING_OK_STATUSES = ("confirmed", "paid")
 
 # Старые суммы без duration в payload (если совпадут с тарифом — max с dct_price).
@@ -675,7 +685,22 @@ class AsyncSQL:
                 )
                 total_payments += (await session.execute(stmt_wata_card)).scalar() or 0
 
-        total_payments //= 2
+                stmt_stars = select(PaymentsStars.amount).where(
+                    PaymentsStars.user_id.in_(chunk),
+                    PaymentsStars.status == "confirmed",
+                )
+                for (amt,) in (await session.execute(stmt_stars)).all():
+                    total_payments += amt
+
+                stmt_cryptobot = select(PaymentsCryptobot.amount, PaymentsCryptobot.currency).where(
+                    PaymentsCryptobot.user_id.in_(chunk),
+                    PaymentsCryptobot.status == "paid",
+                    PaymentsCryptobot.amount > 0.02,
+                )
+                for amt, cur in (await session.execute(stmt_cryptobot)).all():
+                    rub = _stat_cryptobot_to_rub(cur, str(amt))
+                    if rub is not None:
+                        total_payments += rub
 
         return total, with_sub, with_tarif, with_tarif_not_blocked, total_payments, source
 

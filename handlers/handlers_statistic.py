@@ -23,18 +23,9 @@ router = Router()
 
 
 # ---------- Вспомогательные функции конвертации ----------
-def convert_stars_to_rub(amount: int) -> Optional[int]:
-    mapping = {
-        66: 99,
-        179: 269,
-        199: 299,
-        333: 499,
-        99: 99,
-        269: 269,
-        299: 299,
-        499: 499
-    }
-    return mapping.get(amount)
+def convert_stars_to_rub(amount: int) -> int:
+    """1 звезда Telegram = 1 условный рубль в отчётах."""
+    return amount
 
 
 def convert_crypto_to_rub(currency: str, amount: str) -> Optional[int]:
