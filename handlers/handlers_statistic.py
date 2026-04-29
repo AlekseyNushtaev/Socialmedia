@@ -15,7 +15,7 @@ from bot import sql
 from config import ADMIN_IDS, CHECKER_IDS
 from logging_config import logger
 from config_bd.models import AsyncSessionLocal, Users, Payments, PaymentsStars, PaymentsCryptobot, PaymentsCards, \
-    PaymentsPlategaCrypto, PaymentsWataSBP, PaymentsWataCard
+    PaymentsPlategaCrypto, PaymentsWataSBP, PaymentsWataCard, PaymentsFkSBP
 
 router = Router()
 
@@ -337,8 +337,14 @@ async def analytics_export(message: Message):
                 )
                 paid_wata_card = {row[0] for row in (await session.execute(stmt_paid_wata_card)).all()}
 
+                stmt_paid_fk = select(PaymentsFkSBP.user_id).distinct().where(
+                    PaymentsFkSBP.status == 'confirmed',
+                    PaymentsFkSBP.amount != 1,
+                )
+                paid_fk = {row[0] for row in (await session.execute(stmt_paid_fk)).all()}
+
                 all_paid_users = paid_main.union(paid_stars).union(paid_crypto).union(paid_cards).union(
-                    paid_platega_crypto).union(paid_wata_sbp).union(paid_wata_card)
+                    paid_platega_crypto).union(paid_wata_sbp).union(paid_wata_card).union(paid_fk)
 
                 for uid in set_new_total:
                     if uid in all_paid_users:
@@ -422,6 +428,15 @@ async def analytics_export(message: Message):
                     PaymentsWataCard.status == 'confirmed',
                 )
                 for uid, amt in (await session.execute(stmt_wata_card_new)).all():
+                    if uid in set_new_total:
+                        new_payments_amounts.append((uid, amt))
+
+                stmt_fk_new = select(PaymentsFkSBP.user_id, PaymentsFkSBP.amount).where(
+                    PaymentsFkSBP.time_created.between(start_date, end_date),
+                    PaymentsFkSBP.amount != 1,
+                    PaymentsFkSBP.status == 'confirmed',
+                )
+                for uid, amt in (await session.execute(stmt_fk_new)).all():
                     if uid in set_new_total:
                         new_payments_amounts.append((uid, amt))
 
@@ -509,6 +524,14 @@ async def analytics_export(message: Message):
                     PaymentsWataCard.status == 'confirmed',
                 )
                 for amount, is_gift in (await session.execute(stmt_wata_card_all)).all():
+                    all_payments.append((amount, is_gift))
+
+                stmt_fk_all = select(PaymentsFkSBP.amount, PaymentsFkSBP.is_gift).where(
+                    PaymentsFkSBP.time_created.between(start_date, end_date),
+                    PaymentsFkSBP.amount != 1,
+                    PaymentsFkSBP.status == 'confirmed',
+                )
+                for amount, is_gift in (await session.execute(stmt_fk_all)).all():
                     all_payments.append((amount, is_gift))
 
                 total_revenue = sum(p[0] for p in all_payments)

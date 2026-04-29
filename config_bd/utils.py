@@ -1,3 +1,4 @@
+import time
 import uuid
 
 from sqlalchemy import select, update, func, or_, and_, cast, Date
@@ -6,7 +7,7 @@ from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Tuple, Dict, Any
 
 from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, PaymentsCryptobot, PaymentsStars, Online, \
-    WhiteCounter, PaymentsCards, PaymentsPlategaCrypto, PaymentsWataSBP, PaymentsWataCard
+    WhiteCounter, PaymentsCards, PaymentsPlategaCrypto, PaymentsWataSBP, PaymentsWataCard, PaymentsFkSBP
 from lexicon import dct_price
 from logging_config import logger
 
@@ -440,6 +441,7 @@ class AsyncSQL:
                     select(PaymentsPlategaCrypto.user_id).where(PaymentsPlategaCrypto.status == 'confirmed'),
                     select(PaymentsWataSBP.user_id).where(PaymentsWataSBP.status == 'confirmed'),
                     select(PaymentsWataCard.user_id).where(PaymentsWataCard.status == 'confirmed'),
+                    select(PaymentsFkSBP.user_id).where(PaymentsFkSBP.status == 'confirmed'),
                 )
                 .subquery()
             )
@@ -529,6 +531,7 @@ class AsyncSQL:
                     select(PaymentsPlategaCrypto.user_id).where(PaymentsPlategaCrypto.status == "confirmed"),
                     select(PaymentsWataSBP.user_id).where(PaymentsWataSBP.status == "confirmed"),
                     select(PaymentsWataCard.user_id).where(PaymentsWataCard.status == "confirmed"),
+                    select(PaymentsFkSBP.user_id).where(PaymentsFkSBP.status == "confirmed"),
                 )
                 .subquery()
             )
@@ -662,6 +665,12 @@ class AsyncSQL:
                     Payments.status == 'confirmed',
                 )
                 total_payments += (await session.execute(stmt_pay)).scalar() or 0
+
+                stmt_fk = select(func.coalesce(func.sum(PaymentsFkSBP.amount), 0)).where(
+                    PaymentsFkSBP.user_id.in_(chunk),
+                    PaymentsFkSBP.status == 'confirmed',
+                )
+                total_payments += (await session.execute(stmt_fk)).scalar() or 0
 
                 stmt_wata_sbp = select(func.coalesce(func.sum(PaymentsWataSBP.amount), 0)).where(
                     PaymentsWataSBP.user_id.in_(chunk),
@@ -884,6 +893,60 @@ class AsyncSQL:
             stmt = update(PaymentsPlategaCrypto).where(PaymentsPlategaCrypto.transaction_id == transaction_id).values(status=new_status)
             await session.execute(stmt)
             await session.commit()
+
+    async def alloc_fk_api_nonce(self) -> int:
+        """Уникальный растущий nonce для FreeKassa API без отдельной таблицы."""
+        return time.time_ns() // 1000
+
+    async def get_pending_fk_sbp_payments(self) -> List[PaymentsFkSBP]:
+        async with self.session_factory() as session:
+            stmt = select(PaymentsFkSBP).where(PaymentsFkSBP.status == 'pending')
+            result = await session.execute(stmt)
+            return result.scalars().all()
+
+    async def update_fk_sbp_payment_status(self, transaction_id: str, new_status: str) -> None:
+        async with self.session_factory() as session:
+            stmt = update(PaymentsFkSBP).where(
+                PaymentsFkSBP.transaction_id == transaction_id
+            ).values(status=new_status)
+            await session.execute(stmt)
+            await session.commit()
+
+    async def add_fk_sbp_payment(
+            self,
+            user_id: int,
+            amount: int,
+            status: str,
+            transaction_id: str,
+            fk_order_id: Optional[int],
+            payload: str,
+            nonce: int,
+            signature: str,
+            is_gift: bool = False,
+            method: str = 'fk_qr_card',
+    ) -> None:
+        async with self.session_factory() as session:
+            payment = PaymentsFkSBP(
+                user_id=user_id,
+                amount=amount,
+                status=status,
+                transaction_id=transaction_id,
+                fk_order_id=fk_order_id,
+                payload=payload,
+                nonce=nonce,
+                signature=signature,
+                method=method,
+                is_gift=is_gift,
+            )
+            session.add(payment)
+            try:
+                await session.commit()
+                logger.success(
+                    f"💰 Платёж FreeKassa записан: user_id={user_id}, amount={amount}, is_gift={is_gift}, method={method}")
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"❌ Ошибка записи платежа FreeKassa: {e}")
+                raise
 
     async def get_pending_wata_sbp_payments(self) -> List[PaymentsWataSBP]:
         async with self.session_factory() as session:
@@ -1247,6 +1310,7 @@ class AsyncSQL:
             payments_list = (await session.execute(select(Payments))).scalars().all()
             payments_cards_list = (await session.execute(select(PaymentsCards))).scalars().all()
             payments_platega_crypto_list = (await session.execute(select(PaymentsPlategaCrypto))).scalars().all()
+            payments_fk_sbp_list = (await session.execute(select(PaymentsFkSBP))).scalars().all()
             payments_wata_sbp_list = (await session.execute(select(PaymentsWataSBP))).scalars().all()
             payments_wata_card_list = (await session.execute(select(PaymentsWataCard))).scalars().all()
             payments_stars_list = (await session.execute(select(PaymentsStars))).scalars().all()
@@ -1259,6 +1323,7 @@ class AsyncSQL:
             "payments": payments_list,
             "payments_cards": payments_cards_list,
             "payments_platega_crypto": payments_platega_crypto_list,
+            "payments_fk_sbp": payments_fk_sbp_list,
             "payments_wata_sbp": payments_wata_sbp_list,
             "payments_wata_card": payments_wata_card_list,
             "payments_stars": payments_stars_list,
@@ -1294,6 +1359,7 @@ class AsyncSQL:
             subq_cards = select(PaymentsCards.user_id).where(PaymentsCards.status == 'confirmed')
             subq_platega_crypto = select(PaymentsPlategaCrypto.user_id).where(
                 PaymentsPlategaCrypto.status == 'confirmed')
+            subq_fk_sbp = select(PaymentsFkSBP.user_id).where(PaymentsFkSBP.status == 'confirmed')
             subq_wata_sbp = select(PaymentsWataSBP.user_id).where(PaymentsWataSBP.status == 'confirmed')
             subq_wata_card = select(PaymentsWataCard.user_id).where(PaymentsWataCard.status == 'confirmed')
             subq_stars = select(PaymentsStars.user_id).where(PaymentsStars.status == 'confirmed')
@@ -1303,6 +1369,7 @@ class AsyncSQL:
                 subq_payments,
                 subq_cards,
                 subq_platega_crypto,
+                subq_fk_sbp,
                 subq_wata_sbp,
                 subq_wata_card,
                 subq_stars,
@@ -1434,6 +1501,16 @@ class AsyncSQL:
                 ).where(
                     PaymentsCryptobot.user_id == user_id,
                     PaymentsCryptobot.status.in_(_BILLING_OK_STATUSES),
+                ),
+                select(
+                    PaymentsFkSBP.user_id,
+                    PaymentsFkSBP.time_created,
+                    PaymentsFkSBP.amount,
+                    PaymentsFkSBP.payload,
+                    PaymentsFkSBP.is_gift,
+                ).where(
+                    PaymentsFkSBP.user_id == user_id,
+                    PaymentsFkSBP.status.in_(_BILLING_OK_STATUSES),
                 ),
                 select(
                     PaymentsWataSBP.user_id,

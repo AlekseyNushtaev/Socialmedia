@@ -15,6 +15,11 @@ PLATEGA_MERCHANT_ID: Optional[str] = os.environ.get("PLATEGA_MERCHANT_ID")
 WATA_API_SBP_KEY: Optional[str] = os.environ.get("WATA_API_SBP_KEY")
 WATA_API_CARD_KEY: Optional[str] = os.environ.get("WATA_API_CARD_KEY")
 WATA_API_BASE: str = os.environ.get("WATA_API_BASE", "https://api.wata.pro/api/h2h").rstrip("/")
+API_FREEKASSA: Optional[str] = (os.environ.get("API_FREEKASSA") or "").strip() or None
+SHOP_ID_FREEKASSA: Optional[int] = (
+    int(os.environ["SHOP_ID_FREEKASSA"]) if os.environ.get("SHOP_ID_FREEKASSA") else None
+)
+FREEKASSA_SERVER_IP: str = os.environ.get("FREEKASSA_SERVER_IP", "72.56.14.94")
 CHANEL_ID: Optional[int] = int(os.environ.get("CHANEL_ID"))
 CRYPTOBOT_API_TOKEN: Optional[str] = os.environ.get("CRYPTOBOT_API_TOKEN")
 PANEL_URL: Optional[str] = os.environ.get("PANEL_URL")
