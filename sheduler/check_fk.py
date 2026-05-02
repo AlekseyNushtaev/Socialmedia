@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import Any, List, Optional
 
 from bot import bot, sql
@@ -8,6 +9,33 @@ from lexicon import lexicon
 from logging_config import logger
 from payments.pay_freekassa import FreekassaPayment
 from payments.process_payload import process_confirmed_payment
+
+# Локально закрываем «зависшие» pending, если FreeKassa всё ещё не подтвердила оплату.
+FK_PENDING_MAX_AGE = timedelta(hours=8)
+
+
+def _fk_payment_timed_out(payment: PaymentsFkSBP) -> bool:
+    tc = payment.time_created
+    if tc is None:
+        return False
+    return datetime.now() - tc >= FK_PENDING_MAX_AGE
+
+
+def _resolve_fk_status_after_api(
+    payment: PaymentsFkSBP,
+    row: Optional[dict],
+) -> Optional[str]:
+    """Итоговый статус: confirmed/canceled из API; иначе pending или canceled по таймауту 8 ч."""
+    if row:
+        api_status = _coerce_fk_api_status(row.get("status"))
+        api_local = _fk_status_to_local(api_status)
+        if api_local == "confirmed":
+            return "confirmed"
+        if api_local == "canceled":
+            return "canceled"
+    if _fk_payment_timed_out(payment):
+        return "canceled"
+    return "pending"
 
 
 def _coerce_fk_api_status(raw: Any) -> Optional[int]:
@@ -86,28 +114,24 @@ async def check_fk_sbp():
                 result = await fk.get_orders(nonce=nonce, payment_id=payment_id)
                 orders_list = result.get("orders") or []
                 row = _pick_fk_order_row(orders_list, payment)
-                logger.info(f"🔍 FreeKassa: проверка {row}")
 
                 if row is None and payment.fk_order_id is not None:
                     nonce2 = await sql.alloc_fk_api_nonce()
                     result = await fk.get_orders(nonce=nonce2, order_id=payment.fk_order_id)
                     orders_list = result.get("orders") or []
                     row = _pick_fk_order_row(orders_list, payment)
-                    logger.info(f"🔍 FreeKassa: проверка {row}")
 
-                api_status = _coerce_fk_api_status(row.get("status")) if row else None
+                new_status = _resolve_fk_status_after_api(payment, row)
 
-                new_status = _fk_status_to_local(api_status)
-                if not new_status:
+                if row is None:
                     logger.info(
                         f"FreeKassa {payment_id}: нет заказа в ответе API "
                         f"(fk_order_id={payment.fk_order_id}, orders={len(orders_list)})"
                     )
-                    processed_count += 1
-                    continue
 
                 if new_status != payment.status and new_status:
                     await sql.update_fk_sbp_payment_status(payment_id, new_status)
+                    api_status = _coerce_fk_api_status(row.get("status")) if row else None
                     logger.info(
                         f"🔄 FreeKassa {payment_id}: {payment.status} → {new_status} (api={api_status})")
 
