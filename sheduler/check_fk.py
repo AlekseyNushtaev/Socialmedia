@@ -92,6 +92,7 @@ async def check_fk_sbp():
                     result = await fk.get_orders(nonce=nonce2, order_id=payment.fk_order_id)
                     orders_list = result.get("orders") or []
                     row = _pick_fk_order_row(orders_list, payment)
+                    logger.info(f"🔍 FreeKassa: проверка {row}")
 
                 api_status = _coerce_fk_api_status(row.get("status")) if row else None
 
