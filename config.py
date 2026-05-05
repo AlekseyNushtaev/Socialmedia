@@ -33,3 +33,7 @@ TRUE_SUB_LINK: Optional[str] = os.environ.get("TRUE_SUB_LINK")
 MIRROR_SUB_LINK: Optional[str] = os.environ.get("MIRROR_SUB_LINK")
 SHORT_UUID_SECRET: Optional[str] = os.environ.get("SHORT_UUID_SECRET")
 
+# Lead Tracker (POST /users/, /users/trial, /users/connected, /payments/)
+LEAD_TRACKER_BASE: Optional[str] = (os.environ.get("LEAD_TRACKER_BASE") or "").strip() or None
+LEAD_TRACKER_API_KEY: Optional[str] = (os.environ.get("LEAD_TRACKER_API_KEY") or "").strip() or None
+LEAD_TRACKER_STAR_RUB_PER_STAR: str = os.environ.get("LEAD_TRACKER_STAR_RUB_PER_STAR", "1.0")

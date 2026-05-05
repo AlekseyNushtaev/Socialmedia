@@ -2,6 +2,7 @@ import time
 import requests
 
 from bot import sql, x3, bot
+from lead_tracker import post_user_registered, post_user_trial, tracker_source_from_ref_and_stamp
 from config import CHANEL_ID, ADMIN_IDS, BOT_URL
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff, keyboard_payment_method,
@@ -109,6 +110,13 @@ async def process_start_command(message: Message, command: Command):
         inserted = await sql.add_user(message.from_user.id, False, False, ref=ref_login, stamp=stamp)
         if inserted:
             logger.info(f'Юзер {message.from_user.id} - {message.from_user.username} добавлен в БД')
+            src = tracker_source_from_ref_and_stamp(ref_login, stamp)
+            await post_user_registered(
+                message.from_user.id,
+                message.from_user.username,
+                message.from_user.full_name,
+                src,
+            )
         if ttclid:
             await sql.update_ttclid(message.from_user.id, ttclid)
             logger.info(f'Юзеру {message.from_user.id} - {message.from_user.username} присвоен ttclid')
@@ -239,7 +247,7 @@ async def free_vpn_cb(callback: CallbackQuery):
     await callback.message.answer(text=lexicon['buy_success'].format(time, sub_url),
                                   reply_markup=keyboard_sub_after_free(sub_url),
                                   disable_web_page_preview=True)
-
+    await post_user_trial(callback.from_user.id)
 
 
 @router.callback_query(F.data == 'info')

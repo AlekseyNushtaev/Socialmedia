@@ -2,6 +2,7 @@ from datetime import datetime
 
 from bot import x3, sql, bot
 
+from lead_tracker import post_payment_success
 from keyboard import create_kb, keyboard_sub_after_buy, BTN_BACK
 from lexicon import lexicon
 from logging_config import logger
@@ -41,6 +42,7 @@ async def process_confirmed_payment(payload):
         if is_gift:
             # Обработка подарка
             gift_id = await sql.create_gift(user_id, duration, white_flag)
+            await post_payment_success(user_id, method, amount)
 
             # Отправляем сообщение с ссылкой на подарок
             marker = ' — 📱 мобильный тариф' if white_flag else ''
@@ -158,6 +160,8 @@ async def process_confirmed_payment(payload):
             else:
                 await sql.add_user(user_id, True)
             await sql.update_reserve_field(user_id)
+
+            await post_payment_success(user_id, method, amount)
 
             # Отправляем уведомление пользователю
             try:
