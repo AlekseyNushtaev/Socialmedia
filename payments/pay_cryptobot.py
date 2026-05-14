@@ -1,5 +1,6 @@
 import aiohttp
 from typing import Dict, Optional
+
 from aiogram import F, Router
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
@@ -8,6 +9,10 @@ from config import CRYPTOBOT_API_TOKEN, ADMIN_IDS, BOT_URL
 from keyboard import create_kb, BTN_BACK
 from lexicon import lexicon, dct_price, dct_desc
 from logging_config import logger
+
+
+def _cryptobot_payload_tail(source: Optional[str]) -> str:
+    return f",source:{source}" if source else ""
 
 router: Router = Router()
 
@@ -87,15 +92,18 @@ class CryptoBotPayment:
 
 async def create_cryptobot_payment(rub_amount: int, description: str,
                                    user_id: int, duration: str, white: bool,
-                                   is_gift: bool) -> Dict:
+                                   is_gift: bool, source: Optional[str] = None) -> Dict:
     """
     Создание платежа через Cryptobot с суммой в рублях.
     Пользователь сам выбирает криптовалюту внутри Cryptobot.
     """
     cryptobot = CryptoBotPayment(CRYPTOBOT_API_TOKEN)
 
-    payload = (f"user_id:{user_id},duration:{duration},white:{white},"
-               f"gift:{is_gift},method:cryptobot,amount:{rub_amount}")
+    payload = (
+        f"user_id:{user_id},duration:{duration},white:{white},"
+        f"gift:{is_gift},method:cryptobot,amount:{rub_amount}"
+        f"{_cryptobot_payload_tail(source)}"
+    )
 
     result = await cryptobot.create_invoice(
         fiat_amount=float(rub_amount),
