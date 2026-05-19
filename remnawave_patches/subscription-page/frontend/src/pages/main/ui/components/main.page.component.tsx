@@ -21,6 +21,7 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import {
+    Accordion,
     Box,
     Button,
     Card,
@@ -60,7 +61,7 @@ function subPagePayFromBuild(): { apiBase: string; apiKey: string } {
     }
 }
 
-type DurationId = '7' | '30' | '90' | '240' | 'white_30'
+type DurationId = '7' | '30' | '90' | '180' | '365'
 type PayMethodId = 'fk_sbp' | 'fk_card' | 'stars' | 'cryptobot'
 
 const PAY_METHODS: ReadonlyArray<{ id: PayMethodId; label: string }> = [
@@ -150,7 +151,7 @@ function SubscriptionPayBlock({ isMobile }: { isMobile: boolean }) {
         [pickedDuration, payCfg.apiBase, payCfg.apiKey, userId]
     )
 
-    if (subscriptionStillActive) {
+    if (isWhiteProfile) {
         return null
     }
 
@@ -193,25 +194,30 @@ function SubscriptionPayBlock({ isMobile }: { isMobile: boolean }) {
 
     return (
         <>
-            <Card p="md" radius="lg" withBorder>
-                <Stack gap="md">
-                    <Title c="white" order={5}>
-                        Оплата
-                    </Title>
-                    {isWhiteProfile ? (
-                        <Stack gap="sm">
-                            {tariffBtn('Мобильный тариф — 30 дней — 499 ₽', 'white_30')}
-                        </Stack>
-                    ) : (
+            <Accordion
+                chevronPosition="right"
+                defaultValue={subscriptionStillActive ? null : 'pay'}
+                key={subscriptionStillActive ? 'pay-sub-active' : 'pay-sub-expired'}
+                radius="lg"
+                variant="separated"
+            >
+                <Accordion.Item value="pay">
+                    <Accordion.Control>
+                        <Title c="white" order={5}>
+                            Оплата
+                        </Title>
+                    </Accordion.Control>
+                    <Accordion.Panel>
                         <Stack gap="sm">
                             {tariffBtn('Пробный тариф — 7 дней — 99 ₽', '7')}
                             {tariffBtn('30 дней — 199 ₽', '30')}
                             {tariffBtn('90 дней — 539 ₽ (выгода −10%)', '90')}
-                            {tariffBtn('240 дней — 999 ₽ (выгода −40%)', '240')}
+                            {tariffBtn('180 дней — 999 ₽ (выгода −15%)', '180')}
+                            {tariffBtn('365 дней — 1699 ₽ (выгода −30%)', '365')}
                         </Stack>
-                    )}
-                </Stack>
-            </Card>
+                    </Accordion.Panel>
+                </Accordion.Item>
+            </Accordion>
 
             <Modal
                 centered

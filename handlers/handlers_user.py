@@ -206,7 +206,7 @@ async def trial_return_get_cb(callback: CallbackQuery):
     )
 
 
-@router.callback_query(F.data.in_({'r_7', 'r_30', 'r_90', 'r_240', 'r_white_30'}))
+@router.callback_query(F.data.in_({'r_7', 'r_30', 'r_90', 'r_180', 'r_365', 'r_white_30'}))
 async def process_payment_method(callback: CallbackQuery):
     await callback.answer()
     text = lexicon['payment_link']

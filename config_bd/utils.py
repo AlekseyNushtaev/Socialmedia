@@ -39,6 +39,8 @@ def _billing_days_for_tariff_key(key: str) -> Optional[int]:
         return 180
     if key == "240":
         return 240
+    if key == "365":
+        return 365
     return None
 
 

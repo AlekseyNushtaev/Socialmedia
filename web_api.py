@@ -32,7 +32,7 @@ from payments.pay_cryptobot import create_cryptobot_payment
 from payments.pay_freekassa import pay as fk_pay
 from payments.pay_stars import get_stars_amount
 
-DurationId = Literal["7", "30", "90", "240", "white_30"]
+DurationId = Literal["7", "30", "90", "180", "365", "white_30"]
 
 # Маркер в строке payload платежей, созданных через HTTP API страницы подписки (хранится в БД).
 SUB_PAGE_PAYMENT_SOURCE = "subpage"

@@ -1,0 +1,13 @@
+# Быстрая сборка: только подмена уже собранного frontend/dist.
+# Официальный образ уже содержит backend (node_modules, dist) — npm ci не запускается.
+#
+# Использование (на pnl, после npm run start:build в frontend/):
+#   cd /opt/subscription-page
+#   docker build -f Dockerfile.frontend-only -t remnawave-subscription-page-custom:1 .
+#
+# Версию базового образа лучше закрепить тем же тегом, что был у вас в compose
+# (например :7.2.1 вместо :latest), чтобы не расходиться с панелью.
+
+ARG BASE_IMAGE=remnawave/subscription-page:latest
+FROM ${BASE_IMAGE}
+COPY frontend/dist/ /opt/app/frontend/
