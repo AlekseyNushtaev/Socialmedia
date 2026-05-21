@@ -1,11 +1,66 @@
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 
 from bot import x3, sql, bot
 
+from config import PARTNER_PROCENT, LEAD_TRACKER_STAR_RUB_PER_STAR
 from lead_tracker import post_payment_success
 from keyboard import create_kb, keyboard_sub_after_buy, BTN_BACK
 from lexicon import lexicon
 from logging_config import logger
+
+
+def _payment_rub_for_partner(method: str, amount: int | float) -> int:
+    """Сумма оплаты в рублях для расчёта партнёрского вознаграждения."""
+    if method == "stars":
+        stars = Decimal(str(amount))
+        rate = Decimal(str(LEAD_TRACKER_STAR_RUB_PER_STAR))
+        rub = (stars * rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return int(rub)
+    return int(Decimal(str(amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+async def _credit_partner_commission(payer_uid: int, method: str, amount: int | float) -> None:
+    """Начисляет PARTNER_PROCENT% партнёру, если плательщик пришёл по partner-ссылке."""
+    try:
+        user_row = await sql.get_user(payer_uid)
+        if not user_row or len(user_row) <= 27:
+            return
+        partner_str = user_row[27]
+        if not partner_str:
+            return
+        partner_id = int(partner_str)
+        if partner_id <= 0 or partner_id == payer_uid:
+            return
+
+        rub = _payment_rub_for_partner(method, amount)
+        commission = rub * PARTNER_PROCENT // 100
+        if commission <= 0:
+            return
+
+        credited = await sql.add_partner_balance(partner_id, commission)
+        if not credited:
+            logger.warning("Партнёр {} не найден, начисление {} ₽ пропущено", partner_id, commission)
+            return
+
+        try:
+            await bot.send_message(
+                chat_id=partner_id,
+                text=lexicon["partner_success"].format(commission),
+                parse_mode='HTML',
+                reply_markup=create_kb(1, back_to_main=BTN_BACK),
+            )
+            logger.info(
+                "✅ Партнёру {} начислено {} ₽ за оплату пользователя {}",
+                partner_id,
+                commission,
+                payer_uid,
+            )
+        except Exception as e:
+            logger.error("❌ Ошибка уведомления партнёра {}: {}", partner_id, e)
+    except (ValueError, TypeError) as e:
+        logger.error("❌ Ошибка начисления партнёрского вознаграждения: {}", e)
+
 
 async def process_confirmed_payment(payload):
     """Обработка подтвержденного платежа"""
@@ -43,6 +98,7 @@ async def process_confirmed_payment(payload):
             # Обработка подарка
             gift_id = await sql.create_gift(user_id, duration, white_flag)
             await post_payment_success(user_id, method, amount)
+            await _credit_partner_commission(user_id, method, amount)
 
             # Отправляем сообщение с ссылкой на подарок
             marker = ' — 📱 мобильный тариф' if white_flag else ''
@@ -162,6 +218,7 @@ async def process_confirmed_payment(payload):
             await sql.update_reserve_field(user_id)
 
             await post_payment_success(user_id, method, amount)
+            await _credit_partner_commission(user_id, method, amount)
 
             # Отправляем уведомление пользователю
             try:

@@ -73,7 +73,7 @@ def keyboard_start_bonus():
 
 
 def keyboard_start():
-    return create_kb(
+    markup = create_kb(
         1,
         styles={
             "buy_vpn": STYLE_SUCCESS,
@@ -83,10 +83,21 @@ def keyboard_start():
         },
         buy_vpn="💰 Купить подписку",
         connect_vpn="🌐 Подключить Ускоритель соцсетей",
-        ref="👭 Реферальная программа",
+        ref="👭 Бесплатный VPN за приглашения",
         buy_gift="🎁 Подарить подписку",
         # info="💡 Информация",
     )
+    rows = list(markup.inline_keyboard)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="💸 Зарабатывай с нами",
+                callback_data="partner_earn",
+                style=STYLE_SUCCESS,
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 _STYLES_TARIFF = {
@@ -488,3 +499,46 @@ def keyboard_import_end(url_app: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
         ]
     )
+
+
+def keyboard_partner_intro():
+    return create_kb(
+        1,
+        styles={
+            "partner_create_link": STYLE_SUCCESS,
+            "back_to_main": STYLE_PRIMARY,
+        },
+        partner_create_link='🔗 Создать партнёрскую ссылку',
+        back_to_main='🔙 Назад',
+    )
+
+
+def keyboard_partner_dashboard():
+    return create_kb(
+        1,
+        styles={
+            "partner_withdraw": STYLE_SUCCESS,
+            "back_to_main": STYLE_PRIMARY,
+        },
+        partner_withdraw='💰 Создать заявку на вывод',
+        back_to_main='🔙 Назад',
+    )
+
+
+def keyboard_partner_withdraw(support_url: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="💬 Вывести деньги",
+                url=support_url,
+                style=STYLE_SUCCESS,
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data="partner_earn",
+                style=STYLE_PRIMARY,
+            )
+        ],
+    ])

@@ -27,6 +27,11 @@ PANEL_API_TOKEN: Optional[str] = os.environ.get("PANEL_API_TOKEN")
 BOT_URL: Optional[str] = os.environ.get("BOT_URL")
 CHANEL_URL: Optional[str] = os.environ.get("CHANEL_URL")
 SUPPORT_URL: Optional[str] = os.environ.get("SUPPORT_URL")
+PARTNER_PROCENT: int = int(os.environ.get("PARTNER_PROCENT", "20"))
+PARTNER_MIN: int = int(os.environ.get("PARTNER_MIN", "500"))
+PARTNER_SUPPORT_URL: str = (
+    os.environ.get("PARTNER_SUPPORT_URL") or os.environ.get("SUPPORT_URL") or ""
+).strip()
 DOCUMENT_URL_1: Optional[str] = os.environ.get("DOCUMENT_URL_1")
 DOCUMENT_URL_2: Optional[str] = os.environ.get("DOCUMENT_URL_2")
 TRUE_SUB_LINK: Optional[str] = os.environ.get("TRUE_SUB_LINK")

@@ -3,10 +3,11 @@ import requests
 
 from bot import sql, x3, bot
 from lead_tracker import post_user_registered, post_user_trial, tracker_source_from_ref_and_stamp
-from config import CHANEL_ID, ADMIN_IDS, BOT_URL
+from config import CHANEL_ID, ADMIN_IDS, BOT_URL, PARTNER_PROCENT, PARTNER_MIN, PARTNER_SUPPORT_URL
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff, keyboard_payment_method,
-                      chanel_keyboard, keyboard_inline_ref,
+                      chanel_keyboard, keyboard_inline_ref, keyboard_partner_intro, keyboard_partner_dashboard,
+                      keyboard_partner_withdraw,
                       create_kb, keyboard_sub_after_free, STYLE_PRIMARY)
 from logging_config import logger
 import asyncio
@@ -30,6 +31,7 @@ async def process_start_command(message: Message, command: Command):
     user_data = await sql.get_user(message.from_user.id)
     in_panel = False
     ref_login = ''
+    partner_login = ''
     existing = False
     stamp = ''
     ttclid = None
@@ -45,29 +47,46 @@ async def process_start_command(message: Message, command: Command):
             logger.success(f'Юзер {message.from_user.id} - {message.from_user.username} зашел в бота в первый раз')
 
     else:
-        if 'ref' in message.text:
+        start_arg = message.text.split(' ', 1)[1]
+
+        if start_arg.startswith('partner_'):
+            if user_data:
+                logger.info(
+                    f'Юзер {message.from_user.id} - {message.from_user.username} '
+                    f'нажал старт повторно с партнёрской ссылкой'
+                )
+            else:
+                logger.success(
+                    f'Юзер {message.from_user.id} - {message.from_user.username} '
+                    f'зашел в бота в первый раз по партнёрской ссылке'
+                )
+                raw_partner = start_arg.replace('partner_', '', 1)
+                if raw_partner.isdigit() and raw_partner != str(message.from_user.id):
+                    partner_login = raw_partner
+
+        elif start_arg.startswith('ref') or 'ref' in start_arg:
             if user_data:
                 logger.info(f'Юзер {message.from_user.id} - {message.from_user.username} нажал старт повторно с реферальной ссылкой')
             else:
                 logger.success(
                     f'Юзер {message.from_user.id} - {message.from_user.username} зашел в бота в первый раз по реферальной ссылкой')
-                ref_login = message.text.split(' ')[1].replace('ref', '')
+                ref_login = start_arg.replace('ref', '', 1)
 
-        elif 'gift_' in message.text:
+        elif start_arg.startswith('gift_') or 'gift_' in start_arg:
             logger.info(
                 f'Юзер {message.from_user.id} - {message.from_user.username} пытается активировать подарочную подписку')
-            gift_id = message.text.split(' ')[1].replace('gift_', '')
+            gift_id = start_arg.replace('gift_', '', 1)
             in_panel = await activate_gift(message, gift_id)
             await asyncio.sleep(2)
             existing = True
-        elif 'ttclid_' in message.text:
+        elif start_arg.startswith('ttclid_') or 'ttclid_' in start_arg:
             if user_data:
                 logger.info(f'Юзер {message.from_user.id} - {message.from_user.username} нажал старт повторно с меткой ttclid')
             else:
                 logger.success(
                     f'Юзер {message.from_user.id} - {message.from_user.username} зашел в бота в первый раз по метке ttclid')
                 stamp = 'YuraTT'
-                ttclid = message.text.split(' ')[1].replace('ttclid_', '').replace('_', '.')
+                ttclid = start_arg.replace('ttclid_', '', 1).replace('_', '.')
 
                 payload = {
                     'event_source': 'web',
@@ -104,13 +123,16 @@ async def process_start_command(message: Message, command: Command):
             else:
                 logger.success(
                     f'Юзер {message.from_user.id} - {message.from_user.username} зашел в бота в первый раз по метке')
-                stamp = message.text.split(' ')[1]
+                stamp = start_arg
 
     if not existing:
-        inserted = await sql.add_user(message.from_user.id, False, False, ref=ref_login, stamp=stamp)
+        inserted = await sql.add_user(
+            message.from_user.id, False, False,
+            ref=ref_login, stamp=stamp, partner=partner_login,
+        )
         if inserted:
             logger.info(f'Юзер {message.from_user.id} - {message.from_user.username} добавлен в БД')
-            src = tracker_source_from_ref_and_stamp(ref_login, stamp)
+            src = tracker_source_from_ref_and_stamp(ref_login, stamp, partner_login)
             await post_user_registered(
                 message.from_user.id,
                 message.from_user.username,
@@ -279,6 +301,95 @@ async def referral_program(callback: CallbackQuery):
         text=lexicon['ref_info'].format(count, callback.from_user.id),
         reply_markup=ref_keyboard(callback.from_user.id),
         disable_web_page_preview=True
+    )
+
+
+async def _ensure_user_exists(user_id: int) -> None:
+    if await sql.get_user(user_id) is None:
+        await sql.add_user(user_id, False, False)
+
+
+async def _send_partner_dashboard(callback: CallbackQuery) -> None:
+    tg_id = callback.from_user.id
+    user = await sql.get_user_object_by_user_id(tg_id)
+    if user is None:
+        await _ensure_user_exists(tg_id)
+        user = await sql.get_user_object_by_user_id(tg_id)
+
+    referrals = await sql.select_partner_count(tg_id)
+    payments_sum = await sql.select_partner_referrals_payments_sum(tg_id)
+    balance = user.partner_balance or 0
+    paid_out = user.partner_pay or 0
+    total_earned = balance + paid_out
+    link = f"{BOT_URL}?start=partner_{tg_id}"
+
+    await callback.message.answer(
+        text=lexicon['partner_dashboard'].format(
+            link=link,
+            procent=PARTNER_PROCENT,
+            referrals=referrals,
+            payments_sum=payments_sum,
+            total_earned=total_earned,
+            paid_out=paid_out,
+            balance=balance,
+        ),
+        parse_mode='HTML',
+        reply_markup=keyboard_partner_dashboard(),
+        disable_web_page_preview=True,
+    )
+
+
+@router.callback_query(F.data == 'partner_earn')
+async def partner_program(callback: CallbackQuery):
+    await callback.answer()
+    await _ensure_user_exists(callback.from_user.id)
+    user = await sql.get_user_object_by_user_id(callback.from_user.id)
+
+    if user and user.partner_flag:
+        await _send_partner_dashboard(callback)
+    else:
+        await callback.message.answer(
+            text=lexicon['partner_intro'].format(
+                procent=PARTNER_PROCENT,
+                min_sum=PARTNER_MIN,
+            ),
+            parse_mode='HTML',
+            reply_markup=keyboard_partner_intro(),
+        )
+
+
+@router.callback_query(F.data == 'partner_create_link')
+async def partner_create_link(callback: CallbackQuery):
+    await callback.answer()
+    await _ensure_user_exists(callback.from_user.id)
+    await sql.update_partner_flag(callback.from_user.id, True)
+    await _send_partner_dashboard(callback)
+
+
+@router.callback_query(F.data == 'partner_withdraw')
+async def partner_withdraw(callback: CallbackQuery):
+    user = await sql.get_user_object_by_user_id(callback.from_user.id)
+    if user is None:
+        await callback.answer()
+        return
+
+    balance = user.partner_balance or 0
+    if balance < PARTNER_MIN:
+        await callback.answer(
+            lexicon['partner_withdraw_alert'].format(min_sum=PARTNER_MIN),
+            show_alert=True,
+        )
+        return
+
+    await callback.answer()
+    support_url = PARTNER_SUPPORT_URL or "https://t.me/"
+    await callback.message.answer(
+        text=lexicon['partner_withdraw_info'].format(
+            balance=balance,
+            min_sum=PARTNER_MIN,
+        ),
+        parse_mode='HTML',
+        reply_markup=keyboard_partner_withdraw(support_url),
     )
 
 
