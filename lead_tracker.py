@@ -141,10 +141,10 @@ def tracker_source_from_ref_and_stamp(ref: Any, stamp: Any, partner: Any = None)
 
 
 def _source_from_row(row: tuple) -> Optional[str]:
-    """ref — row[2], stamp — row[14], partner — row[27] (AsyncSQL.get_user)."""
+    """ref — row[2], stamp — row[14], partner — row[29] (AsyncSQL.get_user)."""
     ref = row[2] if len(row) > 2 else None
     stamp = row[14] if len(row) > 14 else None
-    partner = row[27] if len(row) > 27 else None
+    partner = row[29] if len(row) > 29 else None
     return tracker_source_from_ref_and_stamp(ref, stamp, partner)
 
 

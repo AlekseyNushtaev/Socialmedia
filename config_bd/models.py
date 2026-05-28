@@ -34,8 +34,10 @@ class Users(Base):
     ttclid = Column(String(100), nullable=True)
     subscribtion = Column(String(255), nullable=True)
     white_subscription = Column(String(255), nullable=True)
-    email = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True, unique=True)
     password = Column(String(255), nullable=True)
+    password_hash = Column(String(255), nullable=True)
+    linked_telegram_id = Column(BigInteger, nullable=True)
     activation_pass = Column(String(255), nullable=True)
     field_str_1 = Column(String(255), nullable=True)
     field_str_2 = Column(String(255), nullable=True)
@@ -174,6 +176,26 @@ class WhiteCounter(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, nullable=False)
     time_created = Column(DateTime, default=datetime.now)
+
+
+class LinkingCodes(Base):
+    __tablename__ = 'linking_codes'
+
+    code_id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(32), nullable=False, unique=True)
+    user_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+
+
+class PasswordResetCodes(Base):
+    __tablename__ = 'password_reset_codes'
+
+    pass_id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False)
+    code = Column(String(16), nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
 
 
 class Online(Base):

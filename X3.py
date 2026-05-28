@@ -16,6 +16,20 @@ import string
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+def panel_username_for_site_email(email_norm: str, is_white: bool) -> str:
+    e = (email_norm or "").strip().lower()
+    digest = hashlib.sha256(e.encode("utf-8")).hexdigest()[:24]
+    return f"em_{digest}_m" if is_white else f"em_{digest}"
+
+
+def panel_username_for_site_user(db_user_id: int, is_white: bool) -> str:
+    n = int(db_user_id)
+    base = str(n)
+    if len(base) < 3:
+        base = f"n{n}"
+    return f"{base}_white" if is_white else base
+
+
 class X3:
     def __init__(self):
         """Инициализация класса с настройками подключения"""
@@ -105,6 +119,146 @@ class X3:
         """Генерирует случайный пароль"""
         chars = string.ascii_letters + string.digits
         return ''.join(random.choice(chars) for _ in range(length))
+
+    def _site_password_from_email(self, email_norm: str, purpose: str) -> str:
+        if not SHORT_UUID_SECRET:
+            raise ValueError(
+                "SHORT_UUID_SECRET не задан в окружении (.env) — нужен для паролей site-клиента"
+            )
+        key = str(SHORT_UUID_SECRET).encode("utf-8")
+        msg = f"{purpose}|{email_norm}".encode("utf-8")
+        digest = hmac.new(key, msg, hashlib.sha256).digest()
+        raw = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+        return (raw + "Aa1")[:16]
+
+    def generate_site_short_uuid(self, email_norm: str, is_white: bool, db_user_id: int) -> str:
+        if not SHORT_UUID_SECRET:
+            raise ValueError(
+                "SHORT_UUID_SECRET не задан в окружении (.env) — нужен для shortUuid site-клиента"
+            )
+        key = str(SHORT_UUID_SECRET).encode("utf-8")
+        tag = b"|white|1" if is_white else b"|white|0"
+        msg = (
+            email_norm.encode("utf-8")
+            + b"\x00uid\x00"
+            + str(int(db_user_id)).encode("utf-8")
+            + tag
+        )
+        digest = hmac.new(key, msg, hashlib.sha256).digest()
+        token = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+        return token[:15]
+
+    async def add_client_site(self, day, email_norm: str, is_white: bool, db_user_id: int):
+        try:
+            email_key = (email_norm or "").strip().lower()
+            panel_username = panel_username_for_site_user(db_user_id, is_white)
+            client_id = self.generate_site_short_uuid(email_key, is_white, db_user_id)
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+            expire_time = current_time + datetime.timedelta(days=day)
+            vless_uuid = str(uuid.uuid1())
+
+            if is_white:
+                squad = ['2be165be-24d1-471e-a1bb-eb57bb45f9b7']
+                traffic_limit_strategy = "MONTH"
+                traffic_limit_bytes = 80530636800
+                hwid_device_limit = 1
+            else:
+                squad_1 = ['b767006b-97b3-46d8-ad42-4b6f9aff8135']
+                squad_2 = ['18c02f0d-c082-49b3-83a8-f0c573f1f154']
+                squad = random.choice([squad_1, squad_2])
+                traffic_limit_strategy = "NO_RESET"
+                traffic_limit_bytes = 0
+                hwid_device_limit = 5
+
+            data = {
+                "username": panel_username,
+                "status": "ACTIVE",
+                "shortUuid": client_id,
+                "trojanPassword": self._site_password_from_email(email_key, "trojan"),
+                "vlessUuid": vless_uuid,
+                "ssPassword": self._site_password_from_email(email_key, "ss"),
+                "trafficLimitStrategy": traffic_limit_strategy,
+                "trafficLimitBytes": traffic_limit_bytes,
+                "expireAt": expire_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
+                "createdAt": current_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
+                "hwidDeviceLimit": hwid_device_limit,
+                "telegramId": int(db_user_id),
+                "description": "Ускоритель соцсетей",
+                "activeInternalSquads": squad
+            }
+
+            logger.info(f"Добавление site-клиента {panel_username}, срок до: {expire_time}")
+            session = await self._get_session()
+            async with session.post(
+                    f"{self.target_url}/api/users",
+                    json=data,
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                logger.info(f"Код ответа add_client_site: {response.status}")
+                if response.status in [200, 201]:
+                    sql = AsyncSQL()
+                    try:
+                        response_data = await response.json()
+                    except (aiohttp.ClientConnectionError, aiohttp.ContentTypeError, ValueError) as e:
+                        logger.warning(
+                            f"Не удалось прочитать JSON при add_client_site {db_user_id}: {e}. Считаем успехом."
+                        )
+                        subscription_end_date = expire_time.replace(tzinfo=datetime.timezone.utc)
+                        if is_white:
+                            await sql.update_white_subscription_end_date(db_user_id, subscription_end_date)
+                            await sql.update_white_subscription(db_user_id, client_id)
+                        else:
+                            await sql.update_subscription_end_date(db_user_id, subscription_end_date)
+                            await sql.update_subscribtion(db_user_id, client_id)
+                        return True
+                    else:
+                        if response_data.get("success", True):
+                            subscription_end_date = expire_time.replace(tzinfo=datetime.timezone.utc)
+                            if is_white:
+                                await sql.update_white_subscription_end_date(db_user_id, subscription_end_date)
+                                await sql.update_white_subscription(db_user_id, client_id)
+                            else:
+                                await sql.update_subscription_end_date(db_user_id, subscription_end_date)
+                                await sql.update_subscribtion(db_user_id, client_id)
+                            logger.info(f"✅ Site-клиент {panel_username} добавлен")
+                            return True
+                        logger.warning(f"❌ API add_client_site: {response_data}")
+                        return False
+                error_text = await response.text() if response.content else "No body"
+                logger.error(f"❌ add_client_site HTTP {response.status} - {error_text}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ add_client_site {panel_username}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+
+    async def delete_panel_user_by_username(self, username: str) -> bool:
+        try:
+            user_response = await self.get_user_by_username(username)
+            if not user_response or 'response' not in user_response or not user_response['response']:
+                return True
+            raw = user_response['response']
+            user = raw[0] if isinstance(raw, list) else raw
+            if not user or 'uuid' not in user:
+                return True
+            uuid_user = user['uuid']
+            session = await self._get_session()
+            async with session.delete(
+                    f"{self.target_url}/api/users/{uuid_user}",
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                if response.status in (200, 204, 404):
+                    logger.info(f"Панель: удалён пользователь {username} (uuid={uuid_user})")
+                    return True
+                error_text = await response.text() if response.content else "No body"
+                logger.warning(f"Удаление {username} из панели: HTTP {response.status} {error_text}")
+                return False
+        except Exception as e:
+            logger.warning(f"delete_panel_user_by_username {username}: {e}")
+            return False
 
     async def addClient(self, day, user_id_str, user_id):
         """Добавляет нового клиента"""

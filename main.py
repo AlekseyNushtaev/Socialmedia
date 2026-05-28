@@ -36,12 +36,14 @@ async def main() -> None:
 
     # Инициализация диспетчера
     dp: Dispatcher = Dispatcher()
-    dp.include_router(handlers_broadcast.router)
+    # Админ-команды (/export, /export_full, /partner, …) — до broadcast FSM,
+    # иначе незавершённая рассылка перехватывает любой текст, включая /команды.
+    dp.include_router(handlers_export.router)
     dp.include_router(handlers_admin.router)
+    dp.include_router(handlers_statistic.router)
+    dp.include_router(handlers_broadcast.router)
     dp.include_router(handlers_user.router)
     dp.include_router(handlers_import.router)
-    dp.include_router(handlers_export.router)
-    dp.include_router(handlers_statistic.router)
     # dp.include_router(pay_platega.router)
     # dp.include_router(pay_wata.router)
     dp.include_router(pay_freekassa.router)

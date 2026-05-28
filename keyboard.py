@@ -13,6 +13,9 @@ STYLE_PRIMARY = "primary"
 STYLE_SUCCESS = "success"
 STYLE_DANGER = "danger"
 
+SITE_URL = "https://gosocial.run/"
+OPEN_SITE_CB = "open_site"
+
 
 def create_kb(
     width: int,
@@ -88,6 +91,15 @@ def keyboard_start():
         # info="💡 Информация",
     )
     rows = list(markup.inline_keyboard)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🌐 Наш сайт",
+                callback_data=OPEN_SITE_CB,
+                style=STYLE_PRIMARY,
+            )
+        ]
+    )
     rows.append(
         [
             InlineKeyboardButton(

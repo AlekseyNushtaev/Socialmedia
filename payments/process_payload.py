@@ -24,9 +24,9 @@ async def _credit_partner_commission(payer_uid: int, method: str, amount: int | 
     """Начисляет PARTNER_PROCENT% партнёру, если плательщик пришёл по partner-ссылке."""
     try:
         user_row = await sql.get_user(payer_uid)
-        if not user_row or len(user_row) <= 27:
+        if not user_row or len(user_row) <= 29:
             return
-        partner_str = user_row[27]
+        partner_str = user_row[29]
         if not partner_str:
             return
         partner_id = int(partner_str)

@@ -1,19 +1,29 @@
 import time
+import urllib.parse
 import requests
 
 from bot import sql, x3, bot
 from lead_tracker import post_user_registered, post_user_trial, tracker_source_from_ref_and_stamp
-from config import CHANEL_ID, ADMIN_IDS, BOT_URL, PARTNER_PROCENT, PARTNER_MIN, PARTNER_SUPPORT_URL
+from config import CHANEL_ID, ADMIN_IDS, BOT_URL, PARTNER_PROCENT, PARTNER_MIN, PARTNER_SUPPORT_URL, PUBLIC_SITE_URL, CHECKER_ID
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff, keyboard_payment_method,
                       chanel_keyboard, keyboard_inline_ref, keyboard_partner_intro, keyboard_partner_dashboard,
                       keyboard_partner_withdraw,
-                      create_kb, keyboard_sub_after_free, STYLE_PRIMARY)
+                      create_kb, keyboard_sub_after_free, STYLE_PRIMARY, OPEN_SITE_CB, SITE_URL)
+from web_api import create_bot_site_login_token
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, ChatMemberUpdated, InlineQuery, InlineQueryResultArticle, \
-    InputTextMessageContent
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    ChatMemberUpdated,
+    InlineQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, Command
 from lexicon import lexicon
 
@@ -79,6 +89,40 @@ async def process_start_command(message: Message, command: Command):
             in_panel = await activate_gift(message, gift_id)
             await asyncio.sleep(2)
             existing = True
+
+        elif start_arg.startswith('auth_'):
+            auth_token = start_arg.replace('auth_', '', 1)
+            from web_api import confirm_tg_auth_token
+            ok = confirm_tg_auth_token(
+                auth_token,
+                message.from_user.id,
+                first_name=message.from_user.first_name or "",
+                username=message.from_user.username,
+            )
+            if ok:
+                logger.info(f'Юзер {message.from_user.id} авторизован на сайте через deeplink')
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                dashboard_url = f"{PUBLIC_SITE_URL}/dashboard" if PUBLIC_SITE_URL else ""
+                if dashboard_url:
+                    kb = InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text="🌐 Перейти в личный кабинет",
+                                    url=dashboard_url,
+                                )
+                            ]
+                        ]
+                    )
+                    await message.answer("✅ Вы авторизованы на сайте!", reply_markup=kb)
+                else:
+                    await message.answer("✅ Вы авторизованы на сайте! Вернитесь во вкладку с сайтом.")
+            else:
+                await message.answer("❌ Ссылка устарела. Попробуйте ещё раз на сайте.")
+            if not user_data:
+                await sql.add_user(message.from_user.id, False, False)
+            existing = True
+
         elif start_arg.startswith('ttclid_') or 'ttclid_' in start_arg:
             if user_data:
                 logger.info(f'Юзер {message.from_user.id} - {message.from_user.username} нажал старт повторно с меткой ttclid')
@@ -151,6 +195,57 @@ async def process_start_command(message: Message, command: Command):
         await message.answer(text=lexicon['start'],
                              reply_markup=keyboard_start(),
                              disable_web_page_preview=True)
+
+
+def _site_base_url() -> str:
+    return (PUBLIC_SITE_URL or SITE_URL).rstrip("/")
+
+
+def _site_login_url(telegram_user_id: int, first_name: str, username: str | None) -> str:
+    token = create_bot_site_login_token(
+        telegram_user_id=telegram_user_id,
+        first_name=first_name,
+        username=username,
+    )
+    return f"{_site_base_url()}/auth/bot?token={urllib.parse.quote(token, safe='')}"
+
+
+@router.callback_query(F.data == OPEN_SITE_CB)
+async def open_site_callback(callback: CallbackQuery):
+    """Ссылка на сайт с одноразовым токеном для авто-входа."""
+    if CHECKER_ID is None or callback.from_user.id != CHECKER_ID:
+        await callback.answer("Раздел находится в разработке", show_alert=True)
+        return
+    await callback.answer()
+    u = callback.from_user
+    login_url = _site_login_url(
+        u.id,
+        u.first_name or "",
+        u.username,
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🌐 Открыть сайт",
+                    url=login_url,
+                    style=STYLE_PRIMARY,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад",
+                    callback_data="back_to_main",
+                )
+            ],
+        ]
+    )
+    await callback.message.answer(
+        "🌐 Нажмите кнопку ниже — откроется сайт, вход выполнится автоматически.\n"
+        "Ссылка действует 10 минут и только один раз.",
+        reply_markup=kb,
+        disable_web_page_preview=True,
+    )
 
 
 @router.callback_query(F.data == 'buy_vpn')

@@ -5,10 +5,11 @@ from aiogram import F, Router
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from bot import sql
-from config import CRYPTOBOT_API_TOKEN, ADMIN_IDS, BOT_URL
+from config import CRYPTOBOT_API_TOKEN, ADMIN_IDS, BOT_URL, PAYMENT_MAX_PENDING_PER_USER
 from keyboard import create_kb, BTN_BACK
 from lexicon import lexicon, dct_price, dct_desc
 from logging_config import logger
+from payments.payment_limits import payment_creation_allowed
 
 
 def _cryptobot_payload_tail(source: Optional[str]) -> str:
@@ -92,11 +93,15 @@ class CryptoBotPayment:
 
 async def create_cryptobot_payment(rub_amount: int, description: str,
                                    user_id: int, duration: str, white: bool,
-                                   is_gift: bool, source: Optional[str] = None) -> Dict:
+                                   is_gift: bool, source: Optional[str] = None,
+                                   telegram_username: Optional[str] = None) -> Dict:
     """
     Создание платежа через Cryptobot с суммой в рублях.
     Пользователь сам выбирает криптовалюту внутри Cryptobot.
     """
+    if not await payment_creation_allowed(int(user_id), telegram_username):
+        return {"status": "rate_limited", "url": "", "invoice_id": ""}
+
     cryptobot = CryptoBotPayment(CRYPTOBOT_API_TOKEN)
 
     payload = (

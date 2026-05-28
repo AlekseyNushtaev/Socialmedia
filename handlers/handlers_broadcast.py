@@ -287,7 +287,7 @@ async def broadcast_start(message: Message, state: FSMContext):
     await state.set_state(BroadcastState.waiting_for_message)
 
 
-@router.message(BroadcastState.waiting_for_message)
+@router.message(BroadcastState.waiting_for_message, ~F.text.startswith("/"))
 async def broadcast_waiting_for_message(message: Message, state: FSMContext):
     if message.content_type not in [
         ContentType.TEXT,
@@ -394,7 +394,7 @@ async def broadcast_custom_link_start(callback: CallbackQuery, state: FSMContext
     await state.set_state(BroadcastState.custom_link_text)
 
 
-@router.message(BroadcastState.custom_link_text)
+@router.message(BroadcastState.custom_link_text, ~F.text.startswith("/"))
 async def broadcast_custom_link_text(message: Message, state: FSMContext):
     if not message.text:
         await message.answer("Нужен текстовый заголовок кнопки.")
@@ -404,7 +404,7 @@ async def broadcast_custom_link_text(message: Message, state: FSMContext):
     await state.set_state(BroadcastState.custom_link_url)
 
 
-@router.message(BroadcastState.custom_link_url)
+@router.message(BroadcastState.custom_link_url, ~F.text.startswith("/"))
 async def broadcast_custom_link_url(message: Message, state: FSMContext):
     if not message.text or not message.text.strip().lower().startswith(("http://", "https://")):
         await message.answer("Нужен корректный URL, начинающийся с http:// или https://")
