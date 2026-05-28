@@ -4,7 +4,7 @@ import requests
 
 from bot import sql, x3, bot
 from lead_tracker import post_user_registered, post_user_trial, tracker_source_from_ref_and_stamp
-from config import CHANEL_ID, ADMIN_IDS, BOT_URL, PARTNER_PROCENT, PARTNER_MIN, PARTNER_SUPPORT_URL, PUBLIC_SITE_URL, CHECKER_ID
+from config import CHANEL_ID, ADMIN_IDS, BOT_URL, PARTNER_PROCENT, PARTNER_MIN, PARTNER_SUPPORT_URL, PUBLIC_SITE_URL
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff, keyboard_payment_method,
                       chanel_keyboard, keyboard_inline_ref, keyboard_partner_intro, keyboard_partner_dashboard,
@@ -213,9 +213,6 @@ def _site_login_url(telegram_user_id: int, first_name: str, username: str | None
 @router.callback_query(F.data == OPEN_SITE_CB)
 async def open_site_callback(callback: CallbackQuery):
     """Ссылка на сайт с одноразовым токеном для авто-входа."""
-    if CHECKER_ID is None or callback.from_user.id != CHECKER_ID:
-        await callback.answer("Раздел находится в разработке", show_alert=True)
-        return
     await callback.answer()
     u = callback.from_user
     login_url = _site_login_url(
