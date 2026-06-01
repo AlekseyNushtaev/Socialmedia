@@ -675,6 +675,13 @@ class AsyncSQL:
             await session.execute(stmt)
             await session.commit()
 
+    async def reset_field_bool_3_all(self) -> int:
+        """Всем строкам users: field_bool_3 = False. Возвращает число обновлённых записей."""
+        async with self.session_factory() as session:
+            result = await session.execute(update(Users).values(field_bool_3=False))
+            await session.commit()
+            return int(result.rowcount or 0)
+
     async def get_last_notification_date(self, user_id: int) -> Optional[date]:
         async with self.session_factory() as session:
             stmt = select(Users.last_notification_date).where(Users.user_id == user_id)
@@ -713,6 +720,28 @@ class AsyncSQL:
                     Users.is_delete == False,
                     Users.in_panel == True,
                     expired,
+                )
+                .order_by(Users.user_id)
+            )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
+
+    async def SELECT_USER_IDS_NO_ACTIVE_PRO_SUBSCRIPTION(self) -> List[int]:
+        """
+        Не удалены; нет активной подписки: subscription_end_date пусто
+        или календарный день окончания (UTC) строго раньше сегодня UTC.
+        """
+        today_utc = datetime.now(timezone.utc).date()
+        no_active_pro = or_(
+            Users.subscription_end_date.is_(None),
+            cast(Users.subscription_end_date, Date) < today_utc,
+        )
+        async with self.session_factory() as session:
+            stmt = (
+                select(Users.user_id)
+                .where(
+                    Users.is_delete == False,
+                    no_active_pro,
                 )
                 .order_by(Users.user_id)
             )

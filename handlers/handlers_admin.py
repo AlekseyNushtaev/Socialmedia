@@ -30,7 +30,7 @@ _ADD7ALL_PROMO_TEXT = '''
 _ADD7ALL_TRIAL_KB = create_kb(
     1,
     styles={"trial_return_get": STYLE_SUCCESS},
-    trial_return_get="🔥Получить 7 дней",
+    trial_return_get="🔥Получить ТРИАЛ",
 )
 
 _MSK = timezone(timedelta(hours=3))
@@ -861,21 +861,31 @@ async def send_gift_command(message: Message):
     )
 
 
+@router.message(Command(commands=['reset_bool3']))
+async def reset_field_bool_3_all_command(message: Message):
+    """Сброс field_bool_3 у всех пользователей (триал / одноразовые акции)."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    n = await sql.reset_field_bool_3_all()
+    await message.answer(f"Готово: field_bool_3 = false у {n} записей в users.")
+    logger.info(f"Админ {message.from_user.id}: сброс field_bool_3 для всех, обновлено строк: {n}")
+
+
 @router.message(Command(commands=['add_7_to_all']))
 async def add_7_to_all_command(message: Message):
     """
-    Рассылка: в панели, обычная подписка истекла (дата UTC), is_delete=False.
-    Кнопка «ТРИАЛ»; +7 дней по нажатию, флаг field_bool_3 (handlers_user).
+    Рассылка пользователям без активной подписки.
+    Кнопка «ТРИАЛ»; +7 дней по нажатию (создание в панели или продление), field_bool_3.
     """
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    user_ids = await sql.SELECT_USER_IDS_PANEL_EXPIRED_REGULAR_SUBSCRIPTION()
+    user_ids = await sql.SELECT_USER_IDS_NO_ACTIVE_PRO_SUBSCRIPTION()
     n = len(user_ids)
     if not user_ids:
         await message.answer(
-            "Нет пользователей: in_panel, не удалены, обычная подписка истекла по дате UTC "
-            "(или subscription_end_date пусто)."
+            "Нет пользователей: is_delete=False, нет активной подписки "
+            "(subscription_end_date пусто или истекла по дате UTC)."
         )
         return
 
@@ -892,9 +902,10 @@ async def add_7_to_all_command(message: Message):
     )
     await message.answer(
         f"К получателям рассылки: {n} чел.\n"
-        f"(в панели, is_delete=False, подписка не активна по календарной дате UTC).\n\n"
+        f"(is_delete=False, нет активной подписки по subscription_end_date UTC).\n\n"
         f"Дальше бот пришлёт вам превью текста с кнопкой «🔥Получить ТРИАЛ» и запрос подтверждения.\n"
-        f"Начисление +7 дней у пользователей — только по нажатию (field_bool_3).",
+        f"Начисление +7 дней — только по нажатию: нет в панели → создать на 7 дней, "
+        f"есть, но подписка истекла → +7 дней от текущего момента.",
         reply_markup=kb,
     )
 
@@ -906,7 +917,7 @@ async def add_7_to_all_preview(callback: CallbackQuery):
         return
 
     await callback.answer()
-    user_ids = await sql.SELECT_USER_IDS_PANEL_EXPIRED_REGULAR_SUBSCRIPTION()
+    user_ids = await sql.SELECT_USER_IDS_NO_ACTIVE_PRO_SUBSCRIPTION()
     n = len(user_ids)
     if not user_ids:
         await callback.message.edit_text("Список пуст. Повторите /add_7_to_all.")
@@ -965,7 +976,7 @@ async def add_7_to_all_confirm(callback: CallbackQuery):
         return
 
     await callback.answer()
-    user_ids = await sql.SELECT_USER_IDS_PANEL_EXPIRED_REGULAR_SUBSCRIPTION()
+    user_ids = await sql.SELECT_USER_IDS_NO_ACTIVE_PRO_SUBSCRIPTION()
     if not user_ids:
         await callback.message.edit_text("Список пуст. Повторите /add_7_to_all.")
         return
