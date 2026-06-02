@@ -371,7 +371,7 @@ async def process_payment_method(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'free_vpn')
 async def free_vpn_cb(callback: CallbackQuery):
-    day = 5
+    day = 3
 
     user_data = await sql.get_user(callback.from_user.id)
     in_panel = False

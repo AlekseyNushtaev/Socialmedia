@@ -818,7 +818,7 @@ async def trial_activate(ctx: JwtCtx):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"error": "Триал уже взят"},
             )
-        day = 5
+        day = 3
         ok = await x3.add_client_site(day, em, False, billing_uid)
         if not ok:
             raise HTTPException(
@@ -853,7 +853,7 @@ async def trial_activate(ctx: JwtCtx):
             content={"error": lexicon["free_vpn_no"]},
         )
 
-    day = 5
+    day = 3
     logger.info(await x3.addClient(day, str(user_id), user_id))
     result_active = await x3.activ(str(user_id))
     time_str = result_active["time"]
