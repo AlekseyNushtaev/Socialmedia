@@ -1775,7 +1775,6 @@ class AsyncSQL:
             stmt = (
                 select(Users)
                 .where(
-                    Users.is_delete == False,
                     Users.subscription_end_date.isnot(None),
                     Users.subscription_end_date > cutoff,
                 )
@@ -1792,7 +1791,6 @@ class AsyncSQL:
             stmt = (
                 select(Users)
                 .where(
-                    Users.is_delete == False,
                     Users.subscription_end_date.isnot(None),
                     Users.subscription_end_date <= cutoff,
                 )
