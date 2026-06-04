@@ -33,6 +33,25 @@ _ADD7ALL_TRIAL_KB = create_kb(
     trial_return_get="🔥Получить ТРИАЛ",
 )
 
+_ADD7SUB_TEXT = (
+    "Уважаемые друзья!\n"
+    "Мы столкнулись с аварией в датацентре.\n"
+    "Проблема решена - бот и личный кабинет снова заработал.\n\n"
+    "В качестве компенсации добавляем Вам 7 дней к подписке!\n\n"
+    "Для обновления подписки:\n"
+    '1. Нажмите кнопку "🔗 Подключить VPN"\n'
+    '2. Перейдите в личный кабинет и нажмите кнопку "Добавить подписку"\n'
+    "3. Подписка в Вашем приложении (Happ, др.) обновится"
+)
+
+_ADD7SUB_CONNECT_KB = create_kb(
+    1,
+    styles={"connect_vpn": STYLE_PRIMARY},
+    connect_vpn="🔗 Подключить VPN",
+)
+
+_ADD7SUB_PROGRESS_EVERY = 1000
+
 _MSK = timezone(timedelta(hours=3))
 
 
@@ -861,6 +880,117 @@ async def send_gift_command(message: Message):
     )
 
 
+_ADD_NEW_USERS_CUTOFF = datetime(2026, 6, 5, 0, 0, 0)
+_ADD_NEW_USERS_PHASE2_EXPIRE = _ADD_NEW_USERS_CUTOFF
+_ADD_NEW_USERS_PROGRESS_EVERY = 1000
+
+
+async def _add_new_users_process_phase(
+    users: list,
+    expire_resolver,
+    admin_chat_id: int,
+    phase_label: str,
+) -> dict:
+    """Добавляет пользователей в панель; expire_resolver(user) -> datetime."""
+    stats = {
+        "total": len(users),
+        "ok": 0,
+        "fail": 0,
+        "skipped_panel": 0,
+        "skipped_non_tg": 0,
+    }
+    for idx, user in enumerate(users, start=1):
+        uid = int(user.user_id)
+        if not is_telegram_chat_id(uid):
+            stats["skipped_non_tg"] += 1
+            await asyncio.sleep(0.02)
+            continue
+        user_id_str = str(uid)
+        panel_resp = await x3.get_user_by_username(user_id_str)
+        if panel_resp and panel_resp.get("response"):
+            stats["skipped_panel"] += 1
+            await sql.update_in_panel(uid)
+            await asyncio.sleep(0.02)
+            continue
+        expire_at = expire_resolver(user)
+        short_uuid = (user.subscribtion or "").strip() or None
+        ok = await x3.add_client_migrate(uid, expire_at, short_uuid=short_uuid)
+        if ok:
+            stats["ok"] += 1
+        else:
+            stats["fail"] += 1
+        if idx % _ADD_NEW_USERS_PROGRESS_EVERY == 0:
+            try:
+                await bot.send_message(
+                    admin_chat_id,
+                    f"{phase_label}: обработано {idx}/{stats['total']}, "
+                    f"добавлено {stats['ok']}, ошибок {stats['fail']}…",
+                )
+            except Exception as notify_err:
+                logger.warning("%s: прогресс админу: %s", phase_label, notify_err)
+        await asyncio.sleep(0.05)
+    return stats
+
+
+@router.message(Command(commands=["add_new_users"]))
+async def add_new_users_command(message: Message):
+    """
+    Миграция в панель из БД:
+    1) subscription_end_date > 2026-06-05 — expireAt из БД;
+    2) остальные с датой — expireAt 2026-06-05 00:00:00.
+    """
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    phase1 = await sql.select_users_subscription_after_cutoff(_ADD_NEW_USERS_CUTOFF)
+    phase2 = await sql.select_users_subscription_on_or_before_cutoff(_ADD_NEW_USERS_CUTOFF)
+
+    await message.answer(
+        "⏳ /add_new_users\n"
+        f"Фаза 1 (дата окончания > {_ADD_NEW_USERS_CUTOFF:%Y-%m-%d %H:%M:%S}): {len(phase1)} чел.\n"
+        f"Фаза 2 (дата есть, ≤ порога): {len(phase2)} чел.\n"
+        "Начинаю…"
+    )
+    admin_chat_id = message.chat.id
+
+    def _expire_from_db(u):
+        dt = u.subscription_end_date
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    s1 = await _add_new_users_process_phase(
+        phase1,
+        _expire_from_db,
+        admin_chat_id,
+        "add_new_users фаза 1",
+    )
+    s2 = await _add_new_users_process_phase(
+        phase2,
+        lambda _u: _ADD_NEW_USERS_PHASE2_EXPIRE.replace(tzinfo=timezone.utc),
+        admin_chat_id,
+        "add_new_users фаза 2",
+    )
+
+    report = (
+        "✅ /add_new_users завершено.\n\n"
+        f"Фаза 1 (> {_ADD_NEW_USERS_CUTOFF:%Y-%m-%d}):\n"
+        f"• В выборке: {s1['total']}\n"
+        f"• Добавлено: {s1['ok']}\n"
+        f"• Уже в панели: {s1['skipped_panel']}\n"
+        f"• Ошибок: {s1['fail']}\n"
+        f"• Не Telegram ID: {s1['skipped_non_tg']}\n\n"
+        f"Фаза 2 (остальные с датой, expireAt {_ADD_NEW_USERS_PHASE2_EXPIRE:%Y-%m-%d}):\n"
+        f"• В выборке: {s2['total']}\n"
+        f"• Добавлено: {s2['ok']}\n"
+        f"• Уже в панели: {s2['skipped_panel']}\n"
+        f"• Ошибок: {s2['fail']}\n"
+        f"• Не Telegram ID: {s2['skipped_non_tg']}"
+    )
+    await message.answer(report)
+    logger.info(f"Админ {message.from_user.id} /add_new_users: {report}")
+
+
 @router.message(Command(commands=['reset_bool3']))
 async def reset_field_bool_3_all_command(message: Message):
     """Сброс field_bool_3 у всех пользователей (триал / одноразовые акции)."""
@@ -869,6 +999,111 @@ async def reset_field_bool_3_all_command(message: Message):
     n = await sql.reset_field_bool_3_all()
     await message.answer(f"Готово: field_bool_3 = false у {n} записей в users.")
     logger.info(f"Админ {message.from_user.id}: сброс field_bool_3 для всех, обновлено строк: {n}")
+
+
+@router.message(Command(commands=["add_7_sub"]))
+async def add_7_sub_command(message: Message):
+    """
+    Компенсация +7 дней: in_panel=True, is_delete=False, subscription_end_date не пусто.
+    Продление в панели (updateClient) и в БД; при успехе — рассылка с кнопкой подключения.
+    """
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    user_ids = await sql.select_subscribe_yes()
+    total = len(user_ids)
+    if not user_ids:
+        await message.answer("Нет пользователей: in_panel=True, is_delete=False.")
+        return
+
+    await message.answer(
+        f"⏳ add_7_sub: обработка {total} пользователей "
+        f"(in_panel=True, is_delete=False)…"
+    )
+
+    admin_chat_id = message.chat.id
+    processed = 0
+    extended = 0
+    messaged = 0
+    skipped_no_sub = 0
+    skipped_non_tg = 0
+    failed_extend = 0
+    failed_message = 0
+
+    for user_id in user_ids:
+        processed += 1
+        if processed % _ADD7SUB_PROGRESS_EVERY == 0:
+            try:
+                await bot.send_message(
+                    admin_chat_id,
+                    f"add_7_sub: обработано {processed} / {total}, "
+                    f"продлено {extended}, уведомлено {messaged}",
+                )
+            except Exception as notify_err:
+                logger.warning(
+                    "add_7_sub: не удалось отправить прогресс админу: %s",
+                    notify_err,
+                )
+
+        if not is_telegram_chat_id(user_id):
+            skipped_non_tg += 1
+            await asyncio.sleep(0.05)
+            continue
+
+        user_data = await sql.get_user(user_id)
+        if not user_data:
+            failed_extend += 1
+            await asyncio.sleep(0.1)
+            continue
+
+        if user_data[9] is None:
+            skipped_no_sub += 1
+            await asyncio.sleep(0.05)
+            continue
+
+        user_id_str = str(user_id)
+        ok = await x3.updateClient(7, user_id_str, user_id)
+        if not ok:
+            failed_extend += 1
+            logger.warning("add_7_sub: не продлили user_id=%s", user_id)
+            await asyncio.sleep(0.1)
+            continue
+
+        extended += 1
+        try:
+            await bot.send_message(
+                user_id,
+                _ADD7SUB_TEXT,
+                reply_markup=_ADD7SUB_CONNECT_KB,
+            )
+            messaged += 1
+        except Exception as e:
+            failed_message += 1
+            logger.warning(
+                "add_7_sub: продлено, сообщение не отправлено user_id=%s: %s",
+                user_id,
+                e,
+            )
+
+        await asyncio.sleep(0.1)
+
+    await message.answer(
+        "Готово (add_7_sub).\n"
+        f"• В выборке: {total}\n"
+        f"• Продлено (+7 дн, панель и БД): {extended}\n"
+        f"• Уведомлено: {messaged}\n"
+        f"• Без subscription_end_date: {skipped_no_sub}\n"
+        f"• Ошибка продления: {failed_extend}\n"
+        f"• Ошибка сообщения (после продления): {failed_message}\n"
+        f"• Пропущено (не Telegram chat_id): {skipped_non_tg}"
+    )
+    logger.info(
+        "Админ %s: add_7_sub total=%s extended=%s messaged=%s",
+        message.from_user.id,
+        total,
+        extended,
+        messaged,
+    )
 
 
 @router.message(Command(commands=['add_7_to_all']))

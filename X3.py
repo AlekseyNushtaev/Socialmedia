@@ -353,6 +353,81 @@ class X3:
             logger.error(traceback.format_exc())
             return False
 
+    @staticmethod
+    def _panel_iso_z(dt: datetime.datetime) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        else:
+            dt = dt.astimezone(datetime.timezone.utc)
+        return dt.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+
+    async def add_client_migrate(
+        self,
+        user_id: int,
+        expire_at: datetime.datetime,
+        short_uuid: str | None = None,
+    ) -> bool:
+        """Создаёт пользователя в панели по данным миграции (/add_new_users)."""
+        user_id_str = str(int(user_id))
+        try:
+            client_id = (short_uuid or "").strip() or self.generate_client_id(user_id)
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+            vless_uuid = str(uuid.uuid1())
+            squad_1 = ['b767006b-97b3-46d8-ad42-4b6f9aff8135']
+            squad_2 = ['18c02f0d-c082-49b3-83a8-f0c573f1f154']
+            squad = random.choice([squad_1, squad_2])
+            data = {
+                "username": user_id_str,
+                "status": "ACTIVE",
+                "shortUuid": client_id,
+                "trojanPassword": self._generate_password(),
+                "vlessUuid": vless_uuid,
+                "ssPassword": self._generate_password(),
+                "trafficLimitStrategy": "NO_RESET",
+                "trafficLimitBytes": 0,
+                "expireAt": self._panel_iso_z(expire_at),
+                "createdAt": self._panel_iso_z(current_time),
+                "hwidDeviceLimit": 5,
+                "telegramId": int(user_id),
+                "description": "SocialMedia",
+                "activeInternalSquads": squad,
+            }
+            logger.info(
+                f"add_client_migrate {user_id_str}, expireAt={data['expireAt']}, shortUuid={client_id}"
+            )
+            session = await self._get_session()
+            async with session.post(
+                    f"{self.target_url}/api/users",
+                    json=data,
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                logger.info(f"add_client_migrate {user_id_str}: HTTP {response.status}")
+                if response.status not in (200, 201):
+                    error_text = await response.text() if response.content else "No body"
+                    logger.error(
+                        f"add_client_migrate {user_id_str}: HTTP {response.status} - {error_text}"
+                    )
+                    return False
+                try:
+                    response_data = await response.json()
+                except (aiohttp.ClientConnectionError, aiohttp.ContentTypeError, ValueError):
+                    response_data = {"success": True}
+                if not response_data.get("success", True):
+                    logger.warning(f"add_client_migrate API: {response_data}")
+                    return False
+                sql = AsyncSQL()
+                await sql.update_in_panel(user_id)
+                if not (short_uuid or "").strip():
+                    await sql.update_subscribtion(user_id, client_id)
+                logger.info(f"add_client_migrate: OK {user_id_str}")
+                return True
+        except Exception as e:
+            logger.error(f"add_client_migrate {user_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+
     async def updateClient(self, day, user_id_str, user_id):
         """Обновляет клиента - добавляет дни к подписке"""
         try:

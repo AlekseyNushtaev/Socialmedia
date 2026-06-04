@@ -28,6 +28,7 @@ from handlers import (
 from sheduler.time_mes import send_message_cron
 from logging_config import logger
 from sheduler.time_mes_not_sub import send_push_cron
+from sheduler.backup_db import send_db_backup_cron
 from web_api import app as web_app
 
 
@@ -46,33 +47,41 @@ async def main() -> None:
     dp: Dispatcher = Dispatcher()
     # Админ-команды (/export, /export_full, /partner, …) — до broadcast FSM,
     # иначе незавершённая рассылка перехватывает любой текст, включая /команды.
-    #dp.include_router(handlers_export.router)
-    # dp.include_router(handlers_admin.router)
-    dp.include_router(handlers_one.router)
-    # dp.include_router(handlers_statistic.router)
-    # dp.include_router(handlers_broadcast.router)
-    # dp.include_router(handlers_user.router)
-    # dp.include_router(handlers_import.router)
+    dp.include_router(handlers_export.router)
+    dp.include_router(handlers_admin.router)
+    dp.include_router(handlers_statistic.router)
+    dp.include_router(handlers_broadcast.router)
+    dp.include_router(handlers_user.router)
+    dp.include_router(handlers_import.router)
     # dp.include_router(pay_platega.router)
     # dp.include_router(pay_wata.router)
-    # dp.include_router(pay_freekassa.router)
-    # dp.include_router(pay_stars.router)
-    # dp.include_router(pay_cryptobot.router)
+    dp.include_router(pay_freekassa.router)
+    dp.include_router(pay_stars.router)
+    dp.include_router(pay_cryptobot.router)
 
     # Запуск шедулера
-    # scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
-    # scheduler.add_job(send_message_cron, trigger='interval', minutes=10, args=[bot], misfire_grace_time=120)
-    # scheduler.add_job(check_connect, trigger='interval', minutes=14, misfire_grace_time=60)
+    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
+    scheduler.add_job(send_message_cron, trigger='interval', minutes=10, args=[bot], misfire_grace_time=120)
+    scheduler.add_job(check_connect, trigger='interval', minutes=14, misfire_grace_time=60)
     # scheduler.add_job(check_platega, trigger='interval', minutes=1, misfire_grace_time=10)
     # scheduler.add_job(check_platega_card, trigger='interval', minutes=1, misfire_grace_time=10)
     # scheduler.add_job(check_platega_crypto, trigger='interval', minutes=1, misfire_grace_time=10)
-    # scheduler.add_job(check_fk, trigger='interval', minutes=1, misfire_grace_time=10)
+    scheduler.add_job(check_fk, trigger='interval', minutes=1, misfire_grace_time=10)
     # scheduler.add_job(check_wata_sbp, trigger='interval', minutes=1, misfire_grace_time=10)
     # scheduler.add_job(check_wata_card, trigger='interval', minutes=1, misfire_grace_time=10)
-    # scheduler.add_job(check_cryptobot_payments, trigger='interval', minutes=1, misfire_grace_time=10)
-    # scheduler.add_job(send_push_cron, trigger='interval', minutes=30, misfire_grace_time=60)
-    # scheduler.add_job(check_online_daily, 'cron', hour=2, minute=55, id='daily_online_stats', misfire_grace_time=60)
-    # scheduler.start()
+    scheduler.add_job(check_cryptobot_payments, trigger='interval', minutes=1, misfire_grace_time=10)
+    scheduler.add_job(send_push_cron, trigger='interval', minutes=30, misfire_grace_time=60)
+    scheduler.add_job(check_online_daily, 'cron', hour=2, minute=55, id='daily_online_stats', misfire_grace_time=60)
+    scheduler.add_job(
+        send_db_backup_cron,
+        trigger='interval',
+        minutes=30,
+        args=[bot],
+        id='db_backup_checker',
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    scheduler.start()
 
     await set_commands(bot)
 

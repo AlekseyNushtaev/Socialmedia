@@ -1767,6 +1767,40 @@ class AsyncSQL:
             result = await session.execute(select(Users))
             return result.scalars().all()
 
+    async def select_users_subscription_after_cutoff(
+        self, cutoff: datetime
+    ) -> List[Users]:
+        """Для /add_new_users: is_delete=False, subscription_end_date > cutoff."""
+        async with self.session_factory() as session:
+            stmt = (
+                select(Users)
+                .where(
+                    Users.is_delete == False,
+                    Users.subscription_end_date.isnot(None),
+                    Users.subscription_end_date > cutoff,
+                )
+                .order_by(Users.user_id)
+            )
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+
+    async def select_users_subscription_on_or_before_cutoff(
+        self, cutoff: datetime
+    ) -> List[Users]:
+        """Для /add_new_users: is_delete=False, subscription_end_date не пусто и <= cutoff."""
+        async with self.session_factory() as session:
+            stmt = (
+                select(Users)
+                .where(
+                    Users.is_delete == False,
+                    Users.subscription_end_date.isnot(None),
+                    Users.subscription_end_date <= cutoff,
+                )
+                .order_by(Users.user_id)
+            )
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+
     async def get_all_payments(self) -> List[Payments]:
         """Возвращает список всех платежей Platega."""
         async with self.session_factory() as session:
