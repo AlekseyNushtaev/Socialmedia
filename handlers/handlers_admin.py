@@ -490,8 +490,8 @@ async def check_online(message: Message):
 
 @router.message(Command("balance_panel"))
 async def check_online(message: Message):
-    squad_1 = ['494bf6ce-d62b-4929-a980-dfc14b8b5ddb']
-    squad_2 = ['2e6f13b9-58a0-4f46-bd76-0d294f00ef18']
+    squad_1 = ['28b6a3bf-8e81-42dd-9ac8-dab1c9a60b0a']
+    squad_2 = ['85f8520a-8dd7-40a6-9f27-8a7467096c6a']
     success_count = 0
     fail_count = 0
     if message.from_user.id not in ADMIN_IDS:
@@ -1365,8 +1365,8 @@ async def send_push_command(message: Message):
     )
 
 
-_NEW_PANEL_SQUAD_1 = "xxx"
-_NEW_PANEL_SQUAD_2 = "yyy"
+_NEW_PANEL_SQUAD_1 = "28b6a3bf-8e81-42dd-9ac8-dab1c9a60b0a"
+_NEW_PANEL_SQUAD_2 = "85f8520a-8dd7-40a6-9f27-8a7467096c6a"
 _NEW_PANEL_WHITE_SQUAD = "zzz"
 _NEW_PANEL_BULK_BATCH = 500
 

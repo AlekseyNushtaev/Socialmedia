@@ -163,8 +163,8 @@ class X3:
                 traffic_limit_bytes = 80530636800
                 hwid_device_limit = 1
             else:
-                squad_1 = ['b767006b-97b3-46d8-ad42-4b6f9aff8135']
-                squad_2 = ['18c02f0d-c082-49b3-83a8-f0c573f1f154']
+                squad_1 = ['28b6a3bf-8e81-42dd-9ac8-dab1c9a60b0a']
+                squad_2 = ['85f8520a-8dd7-40a6-9f27-8a7467096c6a']
                 squad = random.choice([squad_1, squad_2])
                 traffic_limit_strategy = "NO_RESET"
                 traffic_limit_bytes = 0
@@ -277,8 +277,8 @@ class X3:
                 trafficLimitBytes = 80530636800
                 hwidDeviceLimit = 1
             else:
-                squad_1 = ['b767006b-97b3-46d8-ad42-4b6f9aff8135']
-                squad_2 = ['18c02f0d-c082-49b3-83a8-f0c573f1f154']
+                squad_1 = ['28b6a3bf-8e81-42dd-9ac8-dab1c9a60b0a']
+                squad_2 = ['85f8520a-8dd7-40a6-9f27-8a7467096c6a']
                 squad = random.choice([squad_1, squad_2])
                 trafficLimitStrategy = "NO_RESET"
                 trafficLimitBytes = 0
@@ -373,8 +373,8 @@ class X3:
             client_id = (short_uuid or "").strip() or self.generate_client_id(user_id)
             current_time = datetime.datetime.now(datetime.timezone.utc)
             vless_uuid = str(uuid.uuid1())
-            squad_1 = ['b767006b-97b3-46d8-ad42-4b6f9aff8135']
-            squad_2 = ['18c02f0d-c082-49b3-83a8-f0c573f1f154']
+            squad_1 = ['28b6a3bf-8e81-42dd-9ac8-dab1c9a60b0a']
+            squad_2 = ['85f8520a-8dd7-40a6-9f27-8a7467096c6a']
             squad = random.choice([squad_1, squad_2])
             data = {
                 "username": user_id_str,
