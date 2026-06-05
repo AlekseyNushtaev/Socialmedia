@@ -44,6 +44,7 @@ from config import (
 from keyboard import keyboard_payment_stars
 from lexicon import dct_desc, dct_price, lexicon
 from logging_config import logger
+from unisender_go import send_transactional_email, unisender_go_configured
 from payments.payload_source import SITE, SUBPAGE
 from payments.pay_cryptobot import create_cryptobot_payment
 from payments.pay_freekassa import pay_site
@@ -419,12 +420,11 @@ def _random_reset_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
-def _send_smtp_reset_email(to_email: str, code: str) -> None:
+def _send_smtp_email(to_email: str, subject: str, body: str) -> None:
     if not SMTP_HOST or not SMTP_FROM:
         raise RuntimeError("SMTP not configured")
-    body = f"Код для сброса пароля: {code}\n\nЕсли вы не запрашивали сброс, проигнорируйте письмо."
     msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = "Сброс пароля"
+    msg["Subject"] = subject
     msg["From"] = SMTP_FROM
     msg["To"] = to_email
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as s:
@@ -432,6 +432,27 @@ def _send_smtp_reset_email(to_email: str, code: str) -> None:
             s.starttls()
             s.login(SMTP_USER, SMTP_PASSWORD)
         s.send_message(msg)
+
+
+async def _deliver_plain_email(to_email: str, subject: str, body: str) -> bool:
+    """Unisender Go API (приоритет) или SMTP. True — письмо отправлено."""
+    if unisender_go_configured():
+        try:
+            await send_transactional_email(
+                to_email=to_email,
+                subject=subject,
+                plaintext=body,
+            )
+            return True
+        except Exception as e:
+            logger.warning("Unisender Go email failed: {}", e)
+    if SMTP_HOST and SMTP_FROM:
+        try:
+            await asyncio.to_thread(_send_smtp_email, to_email, subject, body)
+            return True
+        except Exception as e:
+            logger.warning("SMTP email failed: {}", e)
+    return False
 
 
 class TelegramAuthIn(BaseModel):
@@ -555,12 +576,12 @@ async def _deliver_reset_code(email: str, code: str, row: tuple) -> None:
     elif row[28] is not None:
         tg = int(row[28])
     smtp_ok = False
-    if SMTP_HOST and SMTP_FROM:
-        try:
-            await asyncio.to_thread(_send_smtp_reset_email, email, code)
-            smtp_ok = True
-        except Exception as e:
-            logger.warning("SMTP password reset failed: {}", e)
+    if unisender_go_configured() or (SMTP_HOST and SMTP_FROM):
+        smtp_ok = await _deliver_plain_email(
+            email,
+            "Сброс пароля — SocialmediaVPN",
+            f"Код для сброса пароля: {code}\n\nЕсли вы не запрашивали сброс, проигнорируйте письмо.",
+        )
     if not smtp_ok and tg is not None:
         try:
             await bot.send_message(tg, f"Код сброса пароля: {code}")
@@ -1135,30 +1156,18 @@ async def gift_activate(ctx: JwtCtx, gift_id: str):
     }
 
 
-def _send_smtp_verification_email(to_email: str, code: str) -> None:
-    if not SMTP_HOST or not SMTP_FROM:
-        raise RuntimeError("SMTP not configured")
-    body = f"Ваш код подтверждения: {code}\n\nКод действителен 15 минут."
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = "Подтверждение email — SocialmediaVPN"
-    msg["From"] = SMTP_FROM
-    msg["To"] = to_email
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as s:
-        if SMTP_USER and SMTP_PASSWORD:
-            s.starttls()
-            s.login(SMTP_USER, SMTP_PASSWORD)
-        s.send_message(msg)
-
-
 async def _send_verification_code(email: str) -> str:
     code = _random_reset_code()
     expires = datetime.now(timezone.utc) + timedelta(minutes=15)
     activation_value = f"{code}:{int(expires.timestamp())}"
     await sql.set_activation_pass_by_email(email, activation_value)
-    try:
-        await asyncio.to_thread(_send_smtp_verification_email, email, code)
-    except Exception as e:
-        logger.warning("SMTP verification email failed: {}", e)
+    body = f"Ваш код подтверждения: {code}\n\nКод действителен 15 минут."
+    if not await _deliver_plain_email(
+        email,
+        "Подтверждение email — SocialmediaVPN",
+        body,
+    ):
+        logger.warning("Verification email not delivered for {}", email)
     return code
 
 

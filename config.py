@@ -51,8 +51,15 @@ PUBLIC_SITE_URL: str = (os.environ.get("PUBLIC_SITE_URL") or "").strip().rstrip(
 JWT_SECRET: Optional[str] = os.environ.get("JWT_SECRET")
 GOOGLE_CLIENT_ID: Optional[str] = os.environ.get("GOOGLE_CLIENT_ID")
 PAYMENT_MAX_PENDING_PER_USER: int = int(os.environ.get("PAYMENT_MAX_PENDING_PER_USER", "8"))
-SMTP_HOST: Optional[str] = os.environ.get("SMTP_HOST")
-SMTP_PORT: int = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER: Optional[str] = os.environ.get("SMTP_USER")
-SMTP_PASSWORD: Optional[str] = os.environ.get("SMTP_PASSWORD")
-SMTP_FROM: Optional[str] = os.environ.get("SMTP_FROM")
+SMTP_HOST: Optional[str] = (os.environ.get("SMTP_HOST") or "").strip() or None
+SMTP_PORT: int = int((os.environ.get("SMTP_PORT") or "587").strip())
+SMTP_USER: Optional[str] = (os.environ.get("SMTP_USER") or "").strip() or None
+SMTP_PASSWORD: Optional[str] = (os.environ.get("SMTP_PASSWORD") or "").strip() or None
+SMTP_FROM: Optional[str] = (os.environ.get("SMTP_FROM") or "").strip() or None
+
+# Unisender Go (HTTPS вместо SMTP): https://godocs.unisender.ru/web-api-ref
+UNISENDER_GO_API_KEY: Optional[str] = (os.environ.get("UNISENDER_GO_API_KEY") or "").strip() or None
+UNISENDER_GO_API_URL: str = (
+    os.environ.get("UNISENDER_GO_API_URL") or "https://go1.unisender.ru/ru/transactional/api/v1"
+).strip().rstrip("/")
+UNISENDER_GO_FROM_NAME: str = (os.environ.get("UNISENDER_GO_FROM_NAME") or "SocialmediaVPN").strip()
