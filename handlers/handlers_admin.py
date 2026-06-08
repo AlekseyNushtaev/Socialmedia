@@ -13,6 +13,7 @@ from aiogram.filters import Command
 
 from sheduler.check_connect import check_connect
 from telegram_ids import is_telegram_chat_id
+from X3 import panel_username_for_site_user
 
 router = Router()
 
@@ -73,10 +74,19 @@ def _panel_sub_line(activ_result: dict) -> str:
 
 
 def _panel_usernames_from_row(row: tuple) -> tuple[str, str]:
-    """Пара username в панели: обычная, вайт (Telegram ID и ID_white)."""
-    tg = int(row[1])
-    s = str(tg)
-    return s, f"{s}_white"
+    """Пара username в панели: обычная, вайт (как в web_api._panel_vpn_usernames)."""
+    tg_col = row[1]
+    linked = row[28]
+    tg = None
+    if tg_col is not None and int(tg_col) > 0:
+        tg = int(tg_col)
+    elif linked is not None and int(linked) > 0:
+        tg = int(linked)
+    if tg is not None:
+        s = str(tg)
+        return s, f"{s}_white"
+    db_uid = int(tg_col)
+    return panel_username_for_site_user(db_uid, False), panel_username_for_site_user(db_uid, True)
 
 
 def _split_long_text(text: str, limit: int = 3800) -> list[str]:
@@ -160,15 +170,11 @@ async def pay_info_command(message: Message):
         await message.answer(f"❌ Пользователь {target_id} не найден в базе данных.")
         return
 
-    reg_un, white_un = _panel_usernames_from_row(user_row)
+    reg_un, _ = _panel_usernames_from_row(user_row)
     sub_db = user_row[9]
-    white_db = user_row[10]
 
     try:
-        ar_reg, ar_white = await asyncio.gather(
-            x3.activ(reg_un),
-            x3.activ(white_un),
-        )
+        ar_reg = await x3.activ(reg_un)
     except Exception as e:
         logger.exception("/pay: панель")
         await message.answer(f"❌ Ошибка запроса к панели: {e}")
@@ -186,10 +192,8 @@ async def pay_info_command(message: Message):
 
     body = (
         f"<b>/pay {target_id}</b>\n\n"
-        f"Подписка обычная в БД бота — {_msk_dt_str(sub_db)}\n"
-        f"Подписка обычная в панели — {_panel_sub_line(ar_reg)}\n"
-        f"Подписка вайт в БД бота — {_msk_dt_str(white_db)}\n"
-        f"Подписка вайт в панели — {_panel_sub_line(ar_white)}\n\n"
+        f"Подписка в БД бота — {_msk_dt_str(sub_db)}\n"
+        f"Подписка в панели — {_panel_sub_line(ar_reg)}\n\n"
         f"<b>Платежи:</b>\n"
     )
     if pay_lines:

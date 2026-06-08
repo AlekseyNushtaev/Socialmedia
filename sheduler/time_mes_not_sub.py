@@ -1,20 +1,115 @@
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 from bot import bot, sql
 from config import CHECKER_ID
 from keyboard import create_kb, STYLE_PRIMARY, STYLE_SUCCESS
 from lexicon import lexicon
 from logging_config import logger
+from telegram_ids import is_telegram_chat_id
+
+VIDEO_FILE_ID = 'BAACAgIAAxkBAAELSgVp04qNlUHBsPO16QJS2mF_H-yq4QACp6UAAvgneEp4HgajZ9ywpzsE'
+
+NOT_SUB_CYCLE_MINUTES = 7 * 24 * 60
+NOT_CONNECT_CYCLE_MINUTES = 24 * 60
+
+
+@dataclass(frozen=True)
+class PushStage:
+    window_start: int
+    window_end: int
+    lexicon_key: str
+    with_video: bool = False
+    keyboard: str = 'free_only'
+
+
+NOT_SUB_STAGES = (
+    PushStage(30, 60, 'push_not_subscribed_30m', keyboard='free_only'),
+    PushStage(180, 210, 'push_not_subscribed_3h', with_video=True, keyboard='free_green'),
+    PushStage(1410, 1440, 'push_not_subscribed_day2_0h', keyboard='buy_free'),
+    PushStage(2130, 2160, 'push_not_subscribed_day2_12h', keyboard='buy_free'),
+    PushStage(2850, 2880, 'push_not_subscribed_day3_0h', keyboard='buy_free'),
+    PushStage(4290, 4320, 'push_not_subscribed_day4_0h', keyboard='buy_free'),
+    PushStage(5730, 5760, 'push_not_subscribed_day5_0h', keyboard='buy_free'),
+    PushStage(7170, 7200, 'push_not_subscribed_day6_0h', keyboard='buy_free'),
+    PushStage(8610, 8640, 'push_not_subscribed_day7_0h', keyboard='buy_free'),
+)
+
+NOT_CONNECT_STAGES = (
+    PushStage(30, 60, 'push_not_connected_30m', keyboard='connect_mes'),
+    PushStage(180, 210, 'push_not_connected_3h', with_video=True, keyboard='connect_video'),
+    PushStage(1410, 1440, 'push_not_connected_24h', keyboard='connect_mes'),
+)
+
+
+def _find_stage(offset_minutes: int, stages: tuple[PushStage, ...]) -> Optional[PushStage]:
+    for stage in stages:
+        if stage.window_start <= offset_minutes <= stage.window_end:
+            return stage
+    return None
+
+
+def _keyboard_for(stage: PushStage):
+    if stage.keyboard == 'free_only':
+        return create_kb(1, free_vpn='✨ Попробовать бесплатно')
+    if stage.keyboard == 'free_green':
+        return create_kb(
+            1,
+            styles={'free_vpn': STYLE_SUCCESS},
+            free_vpn='✨ Попробовать бесплатно',
+        )
+    if stage.keyboard == 'buy_free':
+        return create_kb(
+            1,
+            styles={'buy_vpn': STYLE_PRIMARY, 'free_vpn': STYLE_SUCCESS},
+            buy_vpn='💰 Купить подписку',
+            free_vpn='✨ Попробовать бесплатно',
+        )
+    if stage.keyboard == 'connect_mes':
+        return create_kb(
+            1,
+            styles={
+                'connect_vpn': STYLE_PRIMARY,
+                'video_faq': STYLE_PRIMARY,
+            },
+            connect_vpn='🌐 Подключить Ускоритель соцсетей',
+            video_faq='🎥 Видеоинструкция',
+        )
+    if stage.keyboard == 'connect_video':
+        return create_kb(
+            1,
+            styles={'connect_vpn': STYLE_PRIMARY},
+            connect_vpn='🌐 Подключить Ускоритель соцсетей',
+        )
+    return None
+
+
+async def _send_push(user_id: int, stage: PushStage) -> None:
+    message_text = lexicon[stage.lexicon_key]
+    keyboard = _keyboard_for(stage)
+    if stage.with_video:
+        await bot.send_video(
+            chat_id=user_id,
+            video=VIDEO_FILE_ID,
+            caption=message_text,
+            reply_markup=keyboard,
+        )
+    else:
+        await bot.send_message(
+            chat_id=user_id,
+            text=message_text,
+            reply_markup=keyboard,
+        )
 
 
 async def send_push_cron(debug: bool = False):
     """
-    Две воронки по времени с регистрации (create_user)
-    1) Нет в панели (in_panel=False) — тексты push_not_subscribed_* (+ видео на отметке ~3 ч).
-    2) В панели, но VPN ещё не подключён (is_connect=False) — push_not_connected_* (+ видео ~3 ч).
+    Push по этапам после регистрации (create_user):
+    1) Нет в панели (in_panel=False) — недельный цикл из 9 сообщений.
+    2) В панели, но VPN не подключён (is_connect=False) — суточный цикл из 3 пушей.
     """
     try:
-        # Получаем всех пользователей с Is_tarif = False
         all_users = await sql.select_all_users()
 
         if not all_users:
@@ -29,8 +124,9 @@ async def send_push_cron(debug: bool = False):
         now = datetime.now()
 
         for user_id in all_users:
+            if not is_telegram_chat_id(user_id):
+                continue
             try:
-                # Получаем данные пользователя
                 user_data = await sql.get_user(user_id)
                 if not user_data:
                     continue
@@ -39,101 +135,34 @@ async def send_push_cron(debug: bool = False):
                 if not create_time:
                     continue
 
-                time_diff = now - create_time
-                minutes_diff = time_diff.total_seconds() / 60
-                video_flag = False
+                minutes_diff = (now - create_time).total_seconds() / 60
                 in_panel = user_data[4]
                 is_connect = user_data[5]
-                if not in_panel:
-                    message_text = None
-                    if 30 <= minutes_diff <= 60:
-                        message_text = lexicon['push_not_subscribed_30m']
-                    elif 180 <= minutes_diff <= 210:
-                        video_flag = True
-                        message_text = lexicon['push_not_subscribed_3h']
-                    elif 1410 <= minutes_diff <= 1440:
-                        message_text = lexicon['push_not_subscribed_24h']
 
-                    if message_text:
+                if not in_panel:
+                    offset = minutes_diff % NOT_SUB_CYCLE_MINUTES
+                    stage = _find_stage(int(offset), NOT_SUB_STAGES)
+                    if stage:
                         try:
-                            keyboard_broadcast_mes = create_kb(
-                                1,
-                                styles={
-                                    'free_vpn': STYLE_SUCCESS,
-                                    'video_faq': STYLE_PRIMARY,
-                                },
-                                free_vpn='✨ Попробовать бесплатно',
-                                video_faq='🎥 Видеоинструкция',
-                            )
-                            keyboard_broadcast_video = create_kb(
-                                1,
-                                styles={
-                                    'free_vpn': STYLE_SUCCESS,
-                                },
-                                free_vpn='✨ Попробовать бесплатно',
-                            )
-                            if video_flag:
-                                await bot.send_video(
-                                    chat_id=user_id,
-                                    video='BAACAgIAAxkBAAELSgVp04qNlUHBsPO16QJS2mF_H-yq4QACp6UAAvgneEp4HgajZ9ywpzsE',
-                                    caption=message_text,
-                                    reply_markup=keyboard_broadcast_video
-                                )
-                            else:
-                                await bot.send_message(
-                                    chat_id=user_id,
-                                    text=message_text,
-                                    reply_markup=keyboard_broadcast_mes
-                                )
+                            await _send_push(user_id, stage)
                             sent_count_not_sub += 1
-                            logger.info(f"Отправлено push-уведомление пользователю {user_id}")
+                            logger.info(
+                                f"Отправлено push-уведомление (не в панели) пользователю {user_id}"
+                            )
                         except Exception as e:
                             failed_count_not_sub += 1
                             logger.error(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
 
                 elif not is_connect:
-                    message_text = None
-                    if 30 <= minutes_diff <= 60:
-                        message_text = lexicon['push_not_connected_30m']
-                    elif 180 <= minutes_diff <= 210:
-                        video_flag = True
-                        message_text = lexicon['push_not_connected_3h']
-                    elif 1410 <= minutes_diff <= 1440:
-                        message_text = lexicon['push_not_connected_24h']
-
-                    if message_text:
+                    offset = minutes_diff % NOT_CONNECT_CYCLE_MINUTES
+                    stage = _find_stage(int(offset), NOT_CONNECT_STAGES)
+                    if stage:
                         try:
-                            keyboard_broadcast_mes = create_kb(
-                                1,
-                                styles={
-                                    'connect_vpn': STYLE_PRIMARY,
-                                    'video_faq': STYLE_PRIMARY,
-                                },
-                                connect_vpn='🌐 Подключить Ускоритель соцсетей',
-                                video_faq='🎥 Видеоинструкция',
-                            )
-                            keyboard_broadcast_video = create_kb(
-                                1,
-                                styles={
-                                    'connect_vpn': STYLE_PRIMARY
-                                },
-                                connect_vpn='🌐 Подключить Ускоритель соцсетей',
-                            )
-                            if video_flag:
-                                await bot.send_video(
-                                    chat_id=user_id,
-                                    video='BAACAgIAAxkBAAELSgVp04qNlUHBsPO16QJS2mF_H-yq4QACp6UAAvgneEp4HgajZ9ywpzsE',
-                                    caption=message_text,
-                                    reply_markup=keyboard_broadcast_video
-                                )
-                            else:
-                                await bot.send_message(
-                                    chat_id=user_id,
-                                    text=message_text,
-                                    reply_markup=keyboard_broadcast_mes
-                                )
+                            await _send_push(user_id, stage)
                             sent_count_not_connect += 1
-                            logger.info(f"Отправлено push-уведомление пользователю {user_id}")
+                            logger.info(
+                                f"Отправлено push-уведомление (не подключен) пользователю {user_id}"
+                            )
                         except Exception as e:
                             failed_count_not_connect += 1
                             logger.error(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
@@ -141,7 +170,6 @@ async def send_push_cron(debug: bool = False):
                 failed_count += 1
                 logger.error(f"Ошибка обработки пользователя {user_id}: {e}")
 
-        # Отправляем отчёт checker-аккаунту (если задан CHECKER_ID в .env)
         if CHECKER_ID is not None:
             try:
                 await bot.send_message(
@@ -154,7 +182,10 @@ async def send_push_cron(debug: bool = False):
                          f"❌ Не удалось обработать: {failed_count}\n\n"
                          f"⏰ Время: {now.strftime('%H:%M:%S')}"
                 )
-                logger.info(f"Отчет отправлен: отправлено {sent_count_not_connect + sent_count_not_sub}, не удалось {failed_count + failed_count_not_connect + failed_count_not_sub}")
+                logger.info(
+                    f"Отчет отправлен: отправлено {sent_count_not_connect + sent_count_not_sub}, "
+                    f"не удалось {failed_count + failed_count_not_connect + failed_count_not_sub}"
+                )
             except Exception as e:
                 logger.error(f"Не удалось отправить отчет: {e}")
 

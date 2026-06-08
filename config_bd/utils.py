@@ -180,6 +180,20 @@ async def _merge_user_paid_subscription_flags(session, user_id: int) -> Tuple[bo
     return has_pro, has_white
 
 
+def _payload_duration_to_panel_days(raw: Optional[str]) -> Optional[int]:
+    """Значение duration из payload платежа → число дней для панели (30secret → 30)."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s == "30secret":
+        return 30
+    try:
+        v = int(s)
+        return v if v > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _white_days_from_amount_fallback(amount: Any) -> Optional[int]:
     try:
         target = int(round(float(amount)))
@@ -1966,13 +1980,7 @@ class AsyncSQL:
             m = _parse_map(payload)
             white = m.get("white", "False").lower() == "true"
             gift = bool(is_gift) or m.get("gift", "False").lower() == "true"
-            dur: Optional[int] = None
-            try:
-                di = int(m.get("duration", "0") or "0")
-                if di > 0:
-                    dur = di
-            except ValueError:
-                pass
+            dur = _payload_duration_to_panel_days(m.get("duration"))
             if dur is None:
                 try:
                     amt_f = float(amount)
