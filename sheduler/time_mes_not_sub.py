@@ -9,7 +9,7 @@ from lexicon import lexicon
 from logging_config import logger
 from telegram_ids import is_telegram_chat_id
 
-VIDEO_FILE_ID = 'BAACAgIAAxkBAAELSgVp04qNlUHBsPO16QJS2mF_H-yq4QACp6UAAvgneEp4HgajZ9ywpzsE'
+VIDEO_FILE_ID = 'BAACAgQAAxkBAAFX48BqJ_yHUY5sb-uIeu3-8okY4WebXwACLx0AAgNPQVH61S2gMU3KZzsE'
 
 NOT_SUB_CYCLE_MINUTES = 7 * 24 * 60
 NOT_CONNECT_CYCLE_MINUTES = 24 * 60
