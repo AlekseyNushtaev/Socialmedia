@@ -8,7 +8,16 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
 from bot import sql
-from config import API_FREEKASSA, SHOP_ID_FREEKASSA, FREEKASSA_SERVER_IP, ADMIN_IDS, PAYMENT_MAX_PENDING_PER_USER
+from config import (
+    API_FREEKASSA,
+    SHOP_ID_FREEKASSA,
+    FREEKASSA_SERVER_IP,
+    ADMIN_IDS,
+    PAYMENT_MAX_PENDING_PER_USER,
+    SITE_TEST_EMAIL,
+    SITE_TEST_PRICE_RUB,
+)
+from config_bd.utils import _norm_email
 from keyboard import keyboard_payment_sbp, create_kb, BTN_BACK
 from lexicon import dct_price, dct_desc, lexicon
 from logging_config import logger
@@ -264,6 +273,15 @@ async def pay_for_gift(
         return {"status": "error", "url": "", "id": ""}
 
 
+async def _site_test_price_rub(billing_user_id: int) -> Optional[int]:
+    row = await sql.get_user(billing_user_id)
+    if not row or len(row) <= 18 or not row[18]:
+        return None
+    if _norm_email(str(row[18])) != SITE_TEST_EMAIL:
+        return None
+    return SITE_TEST_PRICE_RUB
+
+
 async def pay_site(
     val: str,
     des: str,
@@ -284,6 +302,9 @@ async def pay_site(
 
     if billing_user_id in ADMIN_IDS:
         val = "1"
+    site_test_price = await _site_test_price_rub(billing_user_id)
+    if site_test_price is not None:
+        val = str(site_test_price)
 
     ui_kind: UiKind = kind
     pm = _payload_method(ui_kind)

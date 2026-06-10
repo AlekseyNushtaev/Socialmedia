@@ -33,6 +33,8 @@ from config import (
     JWT_SECRET,
     PAYMENT_MAX_PENDING_PER_USER,
     SHOP_ID_FREEKASSA,
+    SITE_TEST_EMAIL,
+    SITE_TEST_PRICE_RUB,
     SMTP_FROM,
     SMTP_HOST,
     SMTP_PASSWORD,
@@ -340,6 +342,18 @@ async def _user_row_from_jwt(ctx: dict[str, Any]):
     if ctx.get("auth") == "email":
         return await sql.get_user_by_internal_id(ctx["user_id"])
     return await sql.get_user(ctx["user_id"])
+
+
+def _site_test_price_rub(row: tuple, ctx: dict[str, Any]) -> Optional[int]:
+    """Тестовая цена для email-аккаунта с SITE_TEST_EMAIL (оплата с сайта)."""
+    if ctx.get("auth") != "email":
+        return None
+    em = row[18] or ctx.get("username")
+    if not em:
+        return None
+    if _norm_email(str(em)) != SITE_TEST_EMAIL:
+        return None
+    return SITE_TEST_PRICE_RUB
 
 
 async def resolve_telegram_user_id(ctx: dict[str, Any]) -> int:
@@ -910,6 +924,9 @@ async def payments_create(ctx: JwtCtx, body: CreatePaymentIn):
     price = dct_price[tariff_id]
     if billing_user_id in ADMIN_IDS:
         price = 1
+    site_test_price = _site_test_price_rub(row, ctx)
+    if site_test_price is not None:
+        price = site_test_price
 
     if body.method == "sbp" and (not API_FREEKASSA or SHOP_ID_FREEKASSA is None):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "FreeKassa is not configured")

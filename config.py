@@ -51,6 +51,9 @@ PUBLIC_SITE_URL: str = (os.environ.get("PUBLIC_SITE_URL") or "").strip().rstrip(
 JWT_SECRET: Optional[str] = os.environ.get("JWT_SECRET")
 GOOGLE_CLIENT_ID: Optional[str] = os.environ.get("GOOGLE_CLIENT_ID")
 PAYMENT_MAX_PENDING_PER_USER: int = int(os.environ.get("PAYMENT_MAX_PENDING_PER_USER", "8"))
+# Тестовая цена оплаты с сайта для указанного email (FreeKassa СБП от 10 ₽).
+SITE_TEST_EMAIL: str = (os.environ.get("SITE_TEST_EMAIL") or "open21vpn@gmail.com").strip().lower()
+SITE_TEST_PRICE_RUB: int = int(os.environ.get("SITE_TEST_PRICE_RUB", "10"))
 SMTP_HOST: Optional[str] = (os.environ.get("SMTP_HOST") or "").strip() or None
 SMTP_PORT: int = int((os.environ.get("SMTP_PORT") or "587").strip())
 SMTP_USER: Optional[str] = (os.environ.get("SMTP_USER") or "").strip() or None
