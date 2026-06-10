@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from bot import x3, sql, bot
+from X3 import panel_username_for_site_user
 
 from config import PARTNER_PROCENT, LEAD_TRACKER_STAR_RUB_PER_STAR
 from lead_tracker import post_payment_success
@@ -126,9 +127,12 @@ async def process_confirmed_payment(payload):
         else:
             # Обработка обычного платежа (не подарок)
             # await x3.test_connect()
-            user_id_str = str(user_id)
-            if white_flag:
-                user_id_str += '_white'
+            if user_id <= 0:
+                user_id_str = panel_username_for_site_user(user_id, white_flag)
+            else:
+                user_id_str = str(user_id)
+                if white_flag:
+                    user_id_str += '_white'
 
             existing_user = await x3.get_user_by_username(user_id_str)
 

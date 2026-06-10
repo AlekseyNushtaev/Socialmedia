@@ -899,14 +899,9 @@ async def payments_create(ctx: JwtCtx, body: CreatePaymentIn):
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if ctx.get("auth") == "email":
-        em = row[18] or ctx.get("username")
-        if not em:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет email в профиле")
-        payload_user = _norm_email(str(em))
         billing_user_id = int(row[1])
     else:
         billing_user_id = await resolve_telegram_user_id(ctx)
-        payload_user = str(billing_user_id)
     tariff_id = body.tariff_id
     if tariff_id not in dct_price:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown tariff")
@@ -932,7 +927,6 @@ async def payments_create(ctx: JwtCtx, body: CreatePaymentIn):
     result = await pay_site(
         val=str(price),
         des=description,
-        payload_user=payload_user,
         billing_user_id=billing_user_id,
         duration=duration_str,
         white=white,
@@ -970,7 +964,6 @@ async def sub_page_pay_fk_sbp(body: SubPagePayIn, request: Request, _: SubPageAu
     result = await pay_site(
         val=str(price),
         des=dct_desc[desc_key],
-        payload_user=str(body.user_id),
         billing_user_id=body.user_id,
         duration=duration_str,
         white=white,
@@ -1007,7 +1000,6 @@ async def sub_page_pay_fk_card(body: SubPagePayIn, request: Request, _: SubPageA
     result = await pay_site(
         val=str(price),
         des=dct_desc[desc_key],
-        payload_user=str(body.user_id),
         billing_user_id=body.user_id,
         duration=duration_str,
         white=white,
