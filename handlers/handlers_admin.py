@@ -10,7 +10,9 @@ from logging_config import logger
 import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
+
+from handlers.handlers_broadcast import BroadcastState
 
 from sheduler.check_connect import check_connect
 from telegram_ids import is_telegram_chat_id
@@ -121,12 +123,12 @@ def _split_long_text(text: str, limit: int = 3800) -> list[str]:
     return parts
 
 
-@router.message(F.video, F.from_user.id.in_(ADMIN_IDS))
+@router.message(F.video, F.from_user.id.in_(ADMIN_IDS), ~StateFilter(BroadcastState))
 async def get_video(message: Message):
     await message.answer(message.video.file_id)
 
 
-@router.message(F.photo, F.from_user.id.in_(ADMIN_IDS))
+@router.message(F.photo, F.from_user.id.in_(ADMIN_IDS), ~StateFilter(BroadcastState))
 async def get_photo(message: Message):
     await message.answer(message.photo[-1].file_id)
 
