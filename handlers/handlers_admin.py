@@ -56,6 +56,33 @@ _ADD7SUB_CONNECT_KB = create_kb(
 
 _ADD7SUB_PROGRESS_EVERY = 1000
 
+_ADD2BONUS_CUTOFF = datetime(2026, 6, 23, 0, 0, 0)
+_ADD2BONUS_YES_CB = "add2bonus_yes"
+_ADD2BONUS_NO_CB = "add2bonus_no"
+_ADD2BONUS_PROGRESS_EVERY = 1000
+
+_ADD2BONUS_TEXT = (
+    "Дорогие друзья! 👋\n\n"
+    "Мы столкнулись со <b>сбоем работы страницы подписки</b>.\n"
+    "🔧 Технические работы уже ведутся — скоро всё устраним.\n\n"
+    "В качестве компенсации дарим вам <b>+2 дня</b> к подписке! 🎁\n\n"
+    "💡 <i>PS:</i> вы всегда можете импортировать настройки в приложение "
+    "без перехода на страницу подписки — нажмите кнопку "
+    "«⚠️ Если страница не загружается» и выполните пошаговую инструкцию для подключения."
+)
+
+_ADD2BONUS_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="⚠️ Если страница не загружается",
+                callback_data="import",
+                style=STYLE_DANGER,
+            )
+        ]
+    ]
+)
+
 _SUB_TIER_LABELS = {
     "main": "💫 Подписка PRO — соцсети",
     "white": "📱 Мобильный тариф",
@@ -1146,6 +1173,163 @@ async def add_7_sub_command(message: Message):
     logger.info(
         "Админ %s: add_7_sub total=%s extended=%s messaged=%s",
         message.from_user.id,
+        total,
+        extended,
+        messaged,
+    )
+
+
+@router.message(Command(commands=["add_2_bonus"]))
+async def add_2_bonus_command(message: Message):
+    """
+    Компенсация +2 дня: обычная подписка (subscription_end_date) ≥ 23.06.2026.
+    Продление в панели и БД; при успехе — рассылка с кнопкой импорта настроек.
+    """
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    user_ids = await sql.select_user_ids_main_sub_on_or_after(_ADD2BONUS_CUTOFF)
+    n = len(user_ids)
+    if not user_ids:
+        await message.answer(
+            f"Нет пользователей: обычная подписка заканчивается "
+            f"с {_ADD2BONUS_CUTOFF:%d.%m.%Y} и позже."
+        )
+        return
+
+    confirm_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Да, начислить и отправить",
+                    callback_data=_ADD2BONUS_YES_CB,
+                    style=STYLE_SUCCESS,
+                ),
+                InlineKeyboardButton(
+                    text="❌ Отмена",
+                    callback_data=_ADD2BONUS_NO_CB,
+                    style=STYLE_DANGER,
+                ),
+            ]
+        ]
+    )
+    await message.answer(
+        f"📋 <b>/add_2_bonus</b>\n\n"
+        f"К получателям: <b>{n}</b> чел.\n"
+        f"(обычная подписка ≥ {_ADD2BONUS_CUTOFF:%d.%m.%Y}; is_delete=False)\n\n"
+        f"Будет начислено <b>+2 дня</b> в панели и БД "
+        f"(если подписка истекла — от текущего момента), затем рассылка.\n\n"
+        f"Подтвердите отправку.",
+        reply_markup=confirm_kb,
+    )
+
+
+@router.callback_query(F.data == _ADD2BONUS_NO_CB)
+async def add_2_bonus_cancel(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Нет доступа.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text(
+        "Отправка /add_2_bonus отменена.",
+        reply_markup=None,
+    )
+
+
+@router.callback_query(F.data == _ADD2BONUS_YES_CB)
+async def add_2_bonus_confirm(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Нет доступа.", show_alert=True)
+        return
+
+    await callback.answer()
+    user_ids = await sql.select_user_ids_main_sub_on_or_after(_ADD2BONUS_CUTOFF)
+    if not user_ids:
+        await callback.message.edit_text("Список пуст. Повторите /add_2_bonus.")
+        return
+
+    total = len(user_ids)
+    await callback.message.edit_text(
+        f"⏳ /add_2_bonus: обработка {total} пользователей…"
+    )
+
+    admin_chat_id = callback.message.chat.id
+    processed = 0
+    extended = 0
+    messaged = 0
+    skipped_non_tg = 0
+    failed_extend = 0
+    failed_message = 0
+
+    for user_id in user_ids:
+        processed += 1
+        if processed % _ADD2BONUS_PROGRESS_EVERY == 0:
+            try:
+                await bot.send_message(
+                    admin_chat_id,
+                    f"add_2_bonus: обработано {processed} / {total}, "
+                    f"продлено {extended}, уведомлено {messaged}",
+                )
+            except Exception as notify_err:
+                logger.warning(
+                    "add_2_bonus: не удалось отправить прогресс админу: %s",
+                    notify_err,
+                )
+
+        if not is_telegram_chat_id(user_id):
+            skipped_non_tg += 1
+            await asyncio.sleep(0.05)
+            continue
+
+        user_id_str = str(user_id)
+        try:
+            ok = await x3.updateClient(2, user_id_str, user_id)
+        except Exception as e:
+            failed_extend += 1
+            logger.warning(
+                "add_2_bonus: исключение при продлении user_id=%s: %s",
+                user_id,
+                e,
+            )
+            await asyncio.sleep(0.1)
+            continue
+
+        if not ok:
+            failed_extend += 1
+            logger.warning("add_2_bonus: не продлили user_id=%s", user_id)
+            await asyncio.sleep(0.1)
+            continue
+
+        extended += 1
+        try:
+            await bot.send_message(
+                user_id,
+                _ADD2BONUS_TEXT,
+                reply_markup=_ADD2BONUS_KB,
+            )
+            messaged += 1
+        except Exception as e:
+            failed_message += 1
+            logger.warning(
+                "add_2_bonus: продлено, сообщение не отправлено user_id=%s: %s",
+                user_id,
+                e,
+            )
+
+        await asyncio.sleep(0.1)
+
+    await callback.message.answer(
+        "Готово (/add_2_bonus).\n"
+        f"• В выборке: {total}\n"
+        f"• Продлено (+2 дн, панель и БД): {extended}\n"
+        f"• Уведомлено: {messaged}\n"
+        f"• Ошибка продления: {failed_extend}\n"
+        f"• Ошибка сообщения (после продления): {failed_message}\n"
+        f"• Пропущено (не Telegram chat_id): {skipped_non_tg}"
+    )
+    logger.info(
+        "Админ %s: add_2_bonus total=%s extended=%s messaged=%s",
+        callback.from_user.id,
         total,
         extended,
         messaged,

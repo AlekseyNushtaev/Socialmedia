@@ -1813,6 +1813,22 @@ class AsyncSQL:
             result = await session.execute(stmt)
             return list(result.scalars().all())
 
+    async def select_user_ids_main_sub_on_or_after(
+        self, cutoff: datetime
+    ) -> List[int]:
+        """Для /add_2_bonus: is_delete=False, обычная подписка (subscription_end_date) >= cutoff."""
+        async with self.session_factory() as session:
+            stmt = (
+                select(Users.user_id)
+                .where(
+                    Users.subscription_end_date.isnot(None),
+                    Users.subscription_end_date >= cutoff,
+                )
+                .order_by(Users.user_id)
+            )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
+
     async def get_all_payments(self) -> List[Payments]:
         """Возвращает список всех платежей Platega."""
         async with self.session_factory() as session:
