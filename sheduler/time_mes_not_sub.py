@@ -43,6 +43,19 @@ NOT_CONNECT_STAGES = (
 )
 
 
+_USER_TUPLE_SUBSCRIPTION_END_DATE = 9
+_USER_TUPLE_WHITE_SUBSCRIPTION_END_DATE = 10
+
+
+def _max_subscription_end_date(user_data: tuple) -> Optional[datetime]:
+    dates = [
+        user_data[_USER_TUPLE_SUBSCRIPTION_END_DATE],
+        user_data[_USER_TUPLE_WHITE_SUBSCRIPTION_END_DATE],
+    ]
+    active_dates = [d for d in dates if d is not None]
+    return max(active_dates) if active_dates else None
+
+
 def _find_stage(offset_minutes: int, stages: tuple[PushStage, ...]) -> Optional[PushStage]:
     for stage in stages:
         if stage.window_start <= offset_minutes <= stage.window_end:
@@ -107,7 +120,8 @@ async def send_push_cron(debug: bool = False):
     """
     Push по этапам после регистрации (create_user):
     1) Нет в панели (in_panel=False) — недельный цикл из 9 сообщений.
-    2) В панели, но VPN не подключён (is_connect=False) — суточный цикл из 3 пушей.
+    2) В панели, но VPN не подключён (is_connect=False) и максимальная дата
+       подписки (PRO / white) больше текущей — суточный цикл из 3 пушей.
     """
     try:
         all_users = await sql.select_all_users()
@@ -154,6 +168,9 @@ async def send_push_cron(debug: bool = False):
                             logger.error(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
 
                 elif not is_connect:
+                    max_subscription_end = _max_subscription_end_date(user_data)
+                    if not max_subscription_end or max_subscription_end < now:
+                        continue
                     offset = minutes_diff % NOT_CONNECT_CYCLE_MINUTES
                     stage = _find_stage(int(offset), NOT_CONNECT_STAGES)
                     if stage:
