@@ -63,8 +63,8 @@ async def _credit_partner_commission(payer_uid: int, method: str, amount: int | 
         logger.error("❌ Ошибка начисления партнёрского вознаграждения: {}", e)
 
 
-async def process_confirmed_payment(payload):
-    """Обработка подтвержденного платежа"""
+async def process_confirmed_payment(payload) -> bool:
+    """Обработка подтвержденного платежа. True — подписка/подарок применены успешно."""
     try:
         # Парсим payload
         payload_parts = dict(item.split(':') for item in payload.split(','))
@@ -124,6 +124,8 @@ async def process_confirmed_payment(payload):
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки сообщения о подарке: {e}")
 
+            return True
+
         else:
             # Обработка обычного платежа (не подарок)
             # await x3.test_connect()
@@ -145,7 +147,7 @@ async def process_confirmed_payment(payload):
 
             if not response:
                 logger.error(f"❌ Не удалось обновить клиента {user_id_str}")
-                return
+                return False
 
             result_active = await x3.activ(user_id_str)
             subscription_time = result_active.get('time', '-')
@@ -243,5 +245,10 @@ async def process_confirmed_payment(payload):
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки уведомления: {e}")
 
+            return True
+
     except Exception as e:
         logger.error(f"❌ Ошибка обработки подтвержденного платежа: {e}")
+        return False
+
+    return False
