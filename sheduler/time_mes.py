@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Set
 
@@ -10,6 +11,7 @@ from aiogram import Bot
 from bot import sql, x3
 from config import CHECKER_ID
 from keyboard import keyboard_tariff, keyboard_tariff_trial, create_kb, STYLE_PRIMARY
+from telegram_ids import is_telegram_chat_id
 from lexicon import lexicon
 from logging_config import logger
 
@@ -120,8 +122,10 @@ async def send_message_cron(bot: Bot):
     ids_week: List[int] = []
     ids_second_chance: List[int] = []
 
-    for user_id, end_raw, is_pay_flag, ttclid, field_str_1_raw in candidate_rows:
+    for user_id, end_raw, in_panel, ttclid, field_str_1_raw in candidate_rows:
         try:
+            if not is_telegram_chat_id(user_id):
+                continue
             end = _normalize_end_utc(end_raw)
             if end is None:
                 continue
@@ -129,7 +133,7 @@ async def send_message_cron(bot: Bot):
             end_key = _end_key(end)
             sent = _load_state(field_str_1_raw, end_key)
 
-            if is_pay_flag:
+            if in_panel:
                 keyboard = keyboard_tariff()
             else:
                 keyboard = keyboard_tariff_trial()
@@ -190,6 +194,7 @@ async def send_message_cron(bot: Bot):
                             1,
                             styles={'connect_vpn': STYLE_PRIMARY},
                             connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                            video_faq='🎥 Видеоинструкция',
                         ),
                     )
                     logger.info(f"Отправлено push-уведомление пользователю {user_id} за second_chance")
@@ -240,7 +245,9 @@ async def send_message_cron(bot: Bot):
                         key = f'p{n}'
                         if key not in sent and _in_send_window(now, moment):
                             await bot.send_message(
-                                chat_id=user_id, text=lexicon['push_off'], reply_markup=keyboard
+                                chat_id=user_id,
+                                text=random.choice(lexicon['push_off']),
+                                reply_markup=keyboard,
                             )
                             await asyncio.sleep(0.05)
                             sent.add(key)

@@ -768,7 +768,7 @@ class AsyncSQL:
     ) -> List[Tuple[int, datetime, bool, Optional[str], Optional[str]]]:
         """
         Строки для sheduler.time_mes без N× get_user: user_id, subscription_end_date,
-        reserve_field (платный тариф / клава), ttclid, field_str_1 (JSON состояния push).
+        in_panel (оплачивал / клава тарифа), ttclid, field_str_1 (JSON состояния push).
 
         Фильтр по времени (как _in_send_window в Python, moment <= now < moment + window):
         — Подписка активна: end попадает в одно из окон «за 7 / 3 / 1 день» или «за 1 час».
@@ -821,7 +821,7 @@ class AsyncSQL:
                 select(
                     Users.user_id,
                     Users.subscription_end_date,
-                    Users.reserve_field,
+                    Users.in_panel,
                     Users.ttclid,
                     Users.field_str_1,
                 )
