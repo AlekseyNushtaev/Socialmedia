@@ -31,6 +31,12 @@ def panel_username_for_site_user(db_user_id: int, is_white: bool) -> str:
     return f"{base}_white" if is_white else base
 
 
+def gift_panel_username(gift_num: int, is_white: bool) -> str:
+    """Username в панели для веб-подарка: gift_N или gift_N_white."""
+    base = f"gift_{gift_num}"
+    return f"{base}_white" if is_white else base
+
+
 class X3:
     def __init__(self):
         """Инициализация класса с настройками подключения"""

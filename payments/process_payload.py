@@ -119,6 +119,13 @@ async def process_confirmed_payment(payload) -> bool:
                     reply_markup=create_kb(1, back_to_main=BTN_BACK)
                 )
 
+                # Третье сообщение — активация без Telegram
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=lexicon['payment_gift_web'].format(gift_id),
+                    disable_web_page_preview=True,
+                )
+
                 logger.info(f"✅ Сообщения о подарке отправлены пользователю {user_id}")
 
             except Exception as e:
