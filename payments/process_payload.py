@@ -66,8 +66,17 @@ async def _credit_partner_commission(payer_uid: int, method: str, amount: int | 
 async def process_confirmed_payment(payload) -> bool:
     """Обработка подтвержденного платежа. True — подписка/подарок применены успешно."""
     try:
-        # Парсим payload
-        payload_parts = dict(item.split(':') for item in payload.split(','))
+        # Парсим payload (поддержка флагов без значения, напр. ,discount)
+        payload_parts: dict[str, str] = {}
+        for item in payload.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if ":" in item:
+                k, v = item.split(":", 1)
+                payload_parts[k] = v
+            else:
+                payload_parts[item] = "1"
         user_id = int(payload_parts.get('user_id', 0))
         duration = int(payload_parts.get('duration', 0))
         white_flag = payload_parts.get('white', 'False') == 'True'
