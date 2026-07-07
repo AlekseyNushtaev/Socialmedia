@@ -66,3 +66,6 @@ UNISENDER_GO_API_URL: str = (
     os.environ.get("UNISENDER_GO_API_URL") or "https://go1.unisender.ru/ru/transactional/api/v1"
 ).strip().rstrip("/")
 UNISENDER_GO_FROM_NAME: str = (os.environ.get("UNISENDER_GO_FROM_NAME") or "SocialmediaVPN").strip()
+
+# file_id картинки для рассылки /discount_push
+DISCOUNT_PUSH_PHOTO_ID: str = (os.environ.get("DISCOUNT_PUSH_PHOTO_ID") or "AgACAgQAAxkBAAGLsp1qTOJ_gvKWp9to4yEw-h_u6MnQ2wACrg5rG0k0aFLtvGXwmsbjjQEAAwIAA3kAAzwE").strip()

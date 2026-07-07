@@ -22,6 +22,7 @@ from handlers import (
     handlers_admin,
     handlers_one,
     handlers_broadcast,
+    handlers_discount_push,
     handlers_export,
     handlers_import,
     handlers_devices,
@@ -52,6 +53,7 @@ async def main() -> None:
     dp.include_router(handlers_admin.router)
     dp.include_router(handlers_statistic.router)
     dp.include_router(handlers_broadcast.router)
+    dp.include_router(handlers_discount_push.router)
     dp.include_router(handlers_user.router)
     dp.include_router(handlers_devices.router)
     dp.include_router(handlers_import.router)
