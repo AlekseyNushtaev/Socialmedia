@@ -318,7 +318,7 @@ async def direct_connect_vpn_cb(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text.func(lambda t: t and t.strip().lower() == "черемша"))
+@router.message(F.text.func(lambda t: t and t.strip().lower() == "новыйсервер"))
 async def promo_cheremsha(message: Message):
     uid = message.from_user.id
     user_data = await sql.get_user(uid)
