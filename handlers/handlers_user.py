@@ -33,6 +33,7 @@ router: Router = Router()
 
 _TRIAL_RETURN_GET_CB = "trial_return_get"
 _USER_TUPLE_SUBSCRIPTION_END_DATE = 9
+_USER_TUPLE_FIELD_BOOL_2 = 25
 _USER_TUPLE_FIELD_BOOL_3 = 26
 
 
@@ -315,6 +316,42 @@ async def direct_connect_vpn_cb(callback: CallbackQuery):
         disable_web_page_preview=True
     )
     await callback.answer()
+
+
+@router.message(F.text.func(lambda t: t and t.strip().lower() == "черемша"))
+async def promo_cheremsha(message: Message):
+    uid = message.from_user.id
+    user_data = await sql.get_user(uid)
+    if user_data is None:
+        await sql.add_user(uid, False)
+        user_data = await sql.get_user(uid)
+
+    if user_data[_USER_TUPLE_FIELD_BOOL_2]:
+        await message.answer(lexicon['promo_cheremsha_used'])
+        return
+
+    user_id_str = str(uid)
+    panel_user = await x3.get_user_by_username(user_id_str)
+    if panel_user and panel_user.get("response"):
+        ok = await x3.updateClient(7, user_id_str, uid)
+    else:
+        ok = await x3.addClient(7, user_id_str, uid)
+
+    if not ok:
+        await message.answer(
+            "Не удалось начислить дни. Попробуйте позже или напишите в поддержку."
+        )
+        return
+
+    await sql.update_in_panel(uid)
+    await sql.update_field_bool_2(uid, True)
+
+    sub_url = await x3.sublink(user_id_str)
+    await message.answer(
+        text=lexicon['promo_cheremsha_success'].format(sub_url),
+        reply_markup=keyboard_sub_after_free(sub_url),
+        disable_web_page_preview=True,
+    )
 
 
 @router.callback_query(F.data == _TRIAL_RETURN_GET_CB)
