@@ -824,9 +824,10 @@ async def user_account(ctx: JwtCtx):
 async def user_referrals(ctx: JwtCtx):
     user_id = await resolve_telegram_user_id(ctx)
     count = await sql.select_ref_count(user_id)
+    paid_count = await sql.select_ref_paid_count(user_id)
     base = BOT_URL.rstrip("/")
     link = f"{base}?start=ref{user_id}"
-    return {"count": count, "referral_link": link}
+    return {"count": count, "paid_count": paid_count, "referral_link": link}
 
 
 @app.get("/api/config/tariffs")
