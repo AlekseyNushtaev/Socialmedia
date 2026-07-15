@@ -19,11 +19,49 @@ from config_bd.models import AsyncSessionLocal, Users, Payments, PaymentsStars, 
 
 router = Router()
 
+# Тестовые / служебные суммы — не выводим в разбивке по номиналам.
+_EXCLUDED_PAYMENT_AMOUNTS = {1, 10, 50}
+
 
 # ---------- Вспомогательные функции конвертации ----------
 def convert_stars_to_rub(amount: int) -> int:
     """1 звезда Telegram = 1 условный рубль в отчётах."""
     return amount
+
+
+def _normalize_payment_amount(amount) -> int | None:
+    """Приводит сумму платежа к целым рублям; None — если сумма служебная/нулевая."""
+    try:
+        rub = int(round(float(amount)))
+    except (TypeError, ValueError):
+        return None
+    if rub <= 0 or rub in _EXCLUDED_PAYMENT_AMOUNTS:
+        return None
+    return rub
+
+
+async def _discover_payment_amounts(session) -> list[int]:
+    """Все уникальные суммы подтверждённых платежей по таблицам, кроме 1/10/50."""
+    amounts: set[int] = set()
+
+    sources = [
+        (Payments, Payments.status == 'confirmed', Payments.amount),
+        (PaymentsCards, PaymentsCards.status == 'confirmed', PaymentsCards.amount),
+        (PaymentsPlategaCrypto, PaymentsPlategaCrypto.status == 'confirmed', PaymentsPlategaCrypto.amount),
+        (PaymentsWataSBP, PaymentsWataSBP.status == 'confirmed', PaymentsWataSBP.amount),
+        (PaymentsWataCard, PaymentsWataCard.status == 'confirmed', PaymentsWataCard.amount),
+        (PaymentsFkSBP, PaymentsFkSBP.status == 'confirmed', PaymentsFkSBP.amount),
+        (PaymentsStars, PaymentsStars.status == 'confirmed', PaymentsStars.amount),
+        (PaymentsCryptobot, PaymentsCryptobot.status == 'paid', PaymentsCryptobot.amount),
+    ]
+    for _model, status_filter, amount_col in sources:
+        stmt = select(amount_col).where(status_filter).distinct()
+        for (raw,) in (await session.execute(stmt)).all():
+            rub = _normalize_payment_amount(raw)
+            if rub is not None:
+                # Stars уже в «условных рублях» (1:1), cryptobot — тоже в рублях.
+                amounts.add(rub)
+    return sorted(amounts)
 
 
 class PaymentRecord:
@@ -34,7 +72,11 @@ class PaymentRecord:
         self.time_created = time_created
 
 
-def _sync_build_analytics_excel(monthly_data: dict, daily_data_by_month: dict) -> str:
+def _sync_build_analytics_excel(
+    monthly_data: dict,
+    daily_data_by_month: dict,
+    payment_amounts: list[int],
+) -> str:
     # --- Создание Excel файла ---
     wb = openpyxl.Workbook()
     ws_main = wb.active
@@ -64,17 +106,14 @@ def _sync_build_analytics_excel(monthly_data: dict, daily_data_by_month: dict) -
         ('AOV (₽)', 'aov'),
         ('ARPU (₽)', 'arpu'),
         ('Пользователей на конец месяца', 'cumulative_users'),
-        ('Платежей 99₽ (шт)', 'sum_99_count'),
-        ('Сумма 99₽ (₽)', 'sum_99_amount'),
-        ('Платежей 269₽ (шт)', 'sum_269_count'),
-        ('Сумма 269₽ (₽)', 'sum_269_amount'),
-        ('Платежей 299₽ (шт)', 'sum_299_count'),
-        ('Сумма 299₽ (₽)', 'sum_299_amount'),
-        ('Платежей 499₽ (шт)', 'sum_499_count'),
-        ('Сумма 499₽ (₽)', 'sum_499_amount'),
+    ]
+    for amt in payment_amounts:
+        metric_rows.append((f'Платежей {amt}₽ (шт)', f'sum_{amt}_count'))
+        metric_rows.append((f'Сумма {amt}₽ (₽)', f'sum_{amt}_amount'))
+    metric_rows.extend([
         ('Подарков (шт)', 'gift_count'),
         ('Сумма подарков (₽)', 'gift_amount'),
-    ]
+    ])
 
     row_idx = 2
     for label, key in metric_rows:
@@ -231,6 +270,11 @@ async def analytics_export(message: Message):
 
         monthly_data = {}
         daily_data_by_month = {}
+        cumulative_revenue = 0
+
+        async with AsyncSessionLocal() as session:
+            payment_amounts = await _discover_payment_amounts(session)
+            await session.commit()
 
         for year, month in months:
             start_date = datetime(year, month, 1, 0, 0, 0)
@@ -542,13 +586,13 @@ async def analytics_export(message: Message):
                     Users.create_user <= end_date
                 )
                 cumulative_users = (await session.execute(stmt_cumulative)).scalar() or 1
-                arpu = total_revenue / cumulative_users
+                # ARPU по нарастающей: выручка с января до конца месяца /
+                # пользователи, созданные до конца этого месяца.
+                cumulative_revenue += total_revenue
+                arpu = cumulative_revenue / cumulative_users if cumulative_users else 0
 
-                # Разбивка по суммам
-                sum_99_count = sum_99_amount = 0
-                sum_269_count = sum_269_amount = 0
-                sum_299_count = sum_299_amount = 0
-                sum_499_count = sum_499_amount = 0
+                # Разбивка по суммам (динамически по всем номиналам из БД)
+                amount_stats = {amt: {'count': 0, 'amount': 0} for amt in payment_amounts}
                 gift_count = gift_amount = 0
 
                 for amount, is_gift in all_payments:
@@ -556,20 +600,12 @@ async def analytics_export(message: Message):
                         gift_count += 1
                         gift_amount += amount
                     else:
-                        if amount == 99:
-                            sum_99_count += 1
-                            sum_99_amount += amount
-                        elif amount == 269:
-                            sum_269_count += 1
-                            sum_269_amount += amount
-                        elif amount == 299:
-                            sum_299_count += 1
-                            sum_299_amount += amount
-                        elif amount == 499:
-                            sum_499_count += 1
-                            sum_499_amount += amount
+                        rub = _normalize_payment_amount(amount)
+                        if rub is not None and rub in amount_stats:
+                            amount_stats[rub]['count'] += 1
+                            amount_stats[rub]['amount'] += rub
 
-                monthly_data[month_key] = {
+                month_row = {
                     'new_total': len(new_total),
                     'new_zaliv': len(new_zaliv),
                     'new_saraf': len(new_saraf),
@@ -590,17 +626,13 @@ async def analytics_export(message: Message):
                     'aov': aov,
                     'arpu': arpu,
                     'cumulative_users': cumulative_users,
-                    'sum_99_count': sum_99_count,
-                    'sum_99_amount': sum_99_amount,
-                    'sum_269_count': sum_269_count,
-                    'sum_269_amount': sum_269_amount,
-                    'sum_299_count': sum_299_count,
-                    'sum_299_amount': sum_299_amount,
-                    'sum_499_count': sum_499_count,
-                    'sum_499_amount': sum_499_amount,
                     'gift_count': gift_count,
                     'gift_amount': gift_amount,
                 }
+                for amt in payment_amounts:
+                    month_row[f'sum_{amt}_count'] = amount_stats[amt]['count']
+                    month_row[f'sum_{amt}_amount'] = amount_stats[amt]['amount']
+                monthly_data[month_key] = month_row
 
                 # --- Поденные данные (кумулятивные) ---
                 stmt_before = select(Users.user_id, Users.in_panel, Users.is_connect).where(
@@ -637,7 +669,7 @@ async def analytics_export(message: Message):
                 daily_data_by_month[month_key] = daily_cumulative
 
         export_path = await asyncio.to_thread(
-            _sync_build_analytics_excel, monthly_data, daily_data_by_month
+            _sync_build_analytics_excel, monthly_data, daily_data_by_month, payment_amounts
         )
         try:
             await message.answer_document(
