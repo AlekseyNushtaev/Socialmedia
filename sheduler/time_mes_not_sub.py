@@ -11,9 +11,6 @@ from telegram_ids import is_telegram_chat_id
 
 VIDEO_FILE_ID = 'BAACAgQAAxkBAAFX48BqJ_yHUY5sb-uIeu3-8okY4WebXwACLx0AAgNPQVH61S2gMU3KZzsE'
 
-NOT_SUB_CYCLE_MINUTES = 7 * 24 * 60
-NOT_CONNECT_CYCLE_MINUTES = 24 * 60
-
 
 @dataclass(frozen=True)
 class PushStage:
@@ -36,10 +33,23 @@ NOT_SUB_STAGES = (
     PushStage(8610, 8640, 'push_not_subscribed_day7_0h', keyboard='buy_free'),
 )
 
+# День 1: 3 пуша. Дни 2–7: по одному в момент N*24ч (ротация текстов 1→2→3), без цикла.
 NOT_CONNECT_STAGES = (
     PushStage(30, 60, 'push_not_connected_30m', keyboard='connect_mes'),
     PushStage(180, 210, 'push_not_connected_3h', with_video=True, keyboard='connect_video'),
     PushStage(1410, 1440, 'push_not_connected_24h', keyboard='connect_mes'),
+    # День 2 (48ч) — 1-е сообщение (+30 мин)
+    PushStage(48 * 60, 48 * 60 + 30, 'push_not_connected_30m', keyboard='connect_mes'),
+    # День 3 (72ч) — 2-е сообщение (+3 ч)
+    PushStage(72 * 60, 72 * 60 + 30, 'push_not_connected_3h', with_video=True, keyboard='connect_video'),
+    # День 4 (96ч) — 3-е сообщение (+24 ч)
+    PushStage(96 * 60, 96 * 60 + 30, 'push_not_connected_24h', keyboard='connect_mes'),
+    # День 5 (120ч) — 1-е сообщение (+30 мин)
+    PushStage(120 * 60, 120 * 60 + 30, 'push_not_connected_30m', keyboard='connect_mes'),
+    # День 6 (144ч) — 2-е сообщение (+3 ч)
+    PushStage(144 * 60, 144 * 60 + 30, 'push_not_connected_3h', with_video=True, keyboard='connect_video'),
+    # День 7 (168ч) — 3-е сообщение (+24 ч)
+    PushStage(168 * 60, 168 * 60 + 30, 'push_not_connected_24h', keyboard='connect_mes'),
 )
 
 
@@ -118,10 +128,11 @@ async def _send_push(user_id: int, stage: PushStage) -> None:
 
 async def send_push_cron(debug: bool = False):
     """
-    Push по этапам после регистрации (create_user):
-    1) Нет в панели (in_panel=False) — недельный цикл из 9 сообщений.
+    Push по этапам после регистрации (create_user), без циклов — только первые 7 дней:
+    1) Нет в панели (in_panel=False) — 9 сообщений по расписанию, затем стоп.
     2) В панели, но VPN не подключён (is_connect=False) и максимальная дата
-       подписки (PRO / white) больше текущей — суточный цикл из 3 пушей.
+       подписки (PRO / white) больше текущей — день 1: 3 пуша;
+       дни 2–7: по одному пушу (ротация текстов 1→2→3), затем стоп.
     """
     try:
         all_users = await sql.select_all_users()
@@ -149,13 +160,12 @@ async def send_push_cron(debug: bool = False):
                 if not create_time:
                     continue
 
-                minutes_diff = (now - create_time).total_seconds() / 60
+                minutes_diff = int((now - create_time).total_seconds() / 60)
                 in_panel = user_data[4]
                 is_connect = user_data[5]
 
                 if not in_panel:
-                    offset = minutes_diff % NOT_SUB_CYCLE_MINUTES
-                    stage = _find_stage(int(offset), NOT_SUB_STAGES)
+                    stage = _find_stage(minutes_diff, NOT_SUB_STAGES)
                     if stage:
                         try:
                             await _send_push(user_id, stage)
@@ -171,8 +181,7 @@ async def send_push_cron(debug: bool = False):
                     max_subscription_end = _max_subscription_end_date(user_data)
                     if not max_subscription_end or max_subscription_end < now:
                         continue
-                    offset = minutes_diff % NOT_CONNECT_CYCLE_MINUTES
-                    stage = _find_stage(int(offset), NOT_CONNECT_STAGES)
+                    stage = _find_stage(minutes_diff, NOT_CONNECT_STAGES)
                     if stage:
                         try:
                             await _send_push(user_id, stage)
