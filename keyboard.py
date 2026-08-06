@@ -4,7 +4,7 @@ from typing import List, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANEL_URL, BOT_URL
+from config import CHANEL_URL, BOT_URL, DOCUMENT_URL_1, DOCUMENT_URL_2
 from lexicon import dct_price_discount_33
 
 # Единый текст «Назад» для импорта из других модулей
@@ -67,13 +67,33 @@ def chanel_keyboard():
     return keyboard
 
 
+def _document_link_rows() -> list[list[InlineKeyboardButton]]:
+    return [
+        [
+            InlineKeyboardButton(
+                text="Политика конфиденциальности",
+                url=DOCUMENT_URL_2,
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Пользовательское соглашение",
+                url=DOCUMENT_URL_1,
+            )
+        ],
+    ]
+
+
 def keyboard_start_bonus():
-    return create_kb(
+    markup = create_kb(
         1,
         styles={"free_vpn": STYLE_SUCCESS, "buy_vpn": STYLE_SUCCESS},
         free_vpn="✨ Попробовать бесплатно",
         buy_vpn="💰 Купить подписку",
     )
+    rows = list(markup.inline_keyboard)
+    rows.extend(_document_link_rows())
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def keyboard_start():
@@ -112,6 +132,7 @@ def keyboard_start():
             )
         ]
     )
+    rows.extend(_document_link_rows())
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

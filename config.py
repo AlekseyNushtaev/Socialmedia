@@ -32,8 +32,14 @@ PARTNER_MIN: int = int(os.environ.get("PARTNER_MIN", "500"))
 PARTNER_SUPPORT_URL: str = (
     os.environ.get("PARTNER_SUPPORT_URL") or os.environ.get("SUPPORT_URL") or ""
 ).strip()
-DOCUMENT_URL_1: Optional[str] = os.environ.get("DOCUMENT_URL_1")
-DOCUMENT_URL_2: Optional[str] = os.environ.get("DOCUMENT_URL_2")
+DOCUMENT_URL_1: str = (
+    os.environ.get("DOCUMENT_URL_1")
+    or "https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19"
+).strip()
+DOCUMENT_URL_2: str = (
+    os.environ.get("DOCUMENT_URL_2")
+    or "https://telegra.ph/Politika-konfidencialnosti-08-01-83"
+).strip()
 TRUE_SUB_LINK: Optional[str] = os.environ.get("TRUE_SUB_LINK")
 MIRROR_SUB_LINK: Optional[str] = os.environ.get("MIRROR_SUB_LINK")
 SHORT_UUID_SECRET: Optional[str] = os.environ.get("SHORT_UUID_SECRET")

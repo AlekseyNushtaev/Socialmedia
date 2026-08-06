@@ -708,8 +708,8 @@ async def inline_partner(inline_query: InlineQuery):
 
 {BOT_URL}?start=ref{user_id}
 
-💥 Instagram, Facebook, X, Discord и YouTube
-💫 YouTube без навязчивой рекламы (где доступно)
+💥 Стабильный доступ к соцсетям
+💫 Без навязчивой рекламы (где доступно)
 👌🏻 Стабильное соединение даже в часы пик
     '''
 
