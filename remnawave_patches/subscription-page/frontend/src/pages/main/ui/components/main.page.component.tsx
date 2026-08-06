@@ -210,10 +210,10 @@ function SubscriptionPayBlock({ isMobile }: { isMobile: boolean }) {
                     <Accordion.Panel>
                         <Stack gap="sm">
                             {tariffBtn('Пробный тариф — 7 дней — 99 ₽', '7')}
-                            {tariffBtn('30 дней — 199 ₽', '30')}
-                            {tariffBtn('90 дней — 539 ₽ (выгода −10%)', '90')}
-                            {tariffBtn('180 дней — 999 ₽ (выгода −15%)', '180')}
-                            {tariffBtn('365 дней — 1699 ₽ (выгода −30%)', '365')}
+                            {tariffBtn('30 дней — 299 ₽', '30')}
+                            {tariffBtn('90 дней — 749 ₽ (выгода −16%)', '90')}
+                            {tariffBtn('180 дней — 1349 ₽ (выгода −25%)', '180')}
+                            {tariffBtn('365 дней — 2399 ₽ (выгода −33%)', '365')}
                         </Stack>
                     </Accordion.Panel>
                 </Accordion.Item>
