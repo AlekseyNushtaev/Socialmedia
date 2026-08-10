@@ -29,6 +29,7 @@ from payments.pay_cryptobot import create_cryptobot_payment
 from payments.pay_freekassa import pay
 from payments.payload_source import BOT
 from telegram_ids import is_telegram_chat_id
+from wl_traffic.texts import format_pro_payment_link
 
 router = Router()
 
@@ -160,7 +161,7 @@ async def _create_discount_fk_payment(
 
     btn = "⚡ Оплатить СБП" if ui_kind == "sbp" else "💳 Оплатить картой РФ"
     if payment_info["status"] == "pending":
-        text = lexicon["payment_link"] + "\n\nДля оплаты тарифа перейдите по ссылке:"
+        text = format_pro_payment_link(int(duration)) + "\n\nДля оплаты тарифа перейдите по ссылке:"
         await _delete_and_answer(
             callback,
             text,
@@ -231,7 +232,7 @@ async def discount_push_pay_crypto(callback: CallbackQuery):
     )
 
     if result["status"] == "pending":
-        text = lexicon["payment_link"] + "\n\nДля оплаты тарифа перейдите по ссылке:"
+        text = format_pro_payment_link(int(duration)) + "\n\nДля оплаты тарифа перейдите по ссылке:"
         pay_keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"💎 Оплатить криптовалютой ({rub_amount} ₽)",
@@ -281,7 +282,7 @@ async def discount_push_pay_stars(callback: CallbackQuery):
     await bot.send_invoice(
         callback.from_user.id,
         title=title,
-        description=lexicon["payment_link"],
+        description=format_pro_payment_link(int(duration)),
         prices=prices,
         provider_token="",
         payload=payload,

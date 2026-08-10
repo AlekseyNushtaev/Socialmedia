@@ -8,7 +8,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot import bot
 from config import WEB_API_PORT
 from config_bd.models import create_tables, engine
-from payments import pay_stars, pay_cryptobot, pay_platega, pay_freekassa
+from config_bd.migrate_users_wl_fields import migrate as migrate_wl_fields
+from config_bd.migrate_users_wl_mb_to_gb import migrate as migrate_wl_mb_to_gb
+from config_bd.migrate_wl_traffic_meta import migrate as migrate_wl_traffic_meta
+from payments import pay_stars, pay_cryptobot, pay_platega, pay_freekassa, pay_wl_traffic
 from sheduler.check_connect import check_connect
 from sheduler.check_cryptobot import check_cryptobot_payments
 from sheduler.check_online import check_online_daily
@@ -26,10 +29,14 @@ from handlers import (
     handlers_export,
     handlers_import,
     handlers_devices,
+    handlers_wl_traffic,
 )
 from sheduler.time_mes import send_message_cron
 from logging_config import logger
 from sheduler.time_mes_not_sub import send_push_cron
+from sheduler.check_wl_traffic import check_wl_traffic_cron
+from sheduler.accumulate_wl_traffic import accumulate_wl_traffic_cron
+from wl_traffic.constants import WL_ACCUMULATE_HOUR, WL_ACCUMULATE_MINUTE
 from sheduler.backup_db import send_db_backup_cron
 from web_api import app as web_app
 
@@ -44,6 +51,9 @@ async def set_commands(bot: Bot):
 # Функция конфигурирования и запуска бота
 async def main() -> None:
     await create_tables()
+    await migrate_wl_fields()
+    await migrate_wl_mb_to_gb()
+    await migrate_wl_traffic_meta()
 
     # Инициализация диспетчера
     dp: Dispatcher = Dispatcher()
@@ -55,17 +65,28 @@ async def main() -> None:
     dp.include_router(handlers_broadcast.router)
     dp.include_router(handlers_discount_push.router)
     dp.include_router(handlers_user.router)
+    dp.include_router(handlers_wl_traffic.router)
     dp.include_router(handlers_devices.router)
     dp.include_router(handlers_import.router)
     # dp.include_router(pay_platega.router)
     # dp.include_router(pay_wata.router)
     dp.include_router(pay_freekassa.router)
+    dp.include_router(pay_wl_traffic.router)
     dp.include_router(pay_stars.router)
     dp.include_router(pay_cryptobot.router)
 
     # Запуск шедулера
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
     scheduler.add_job(send_message_cron, trigger='interval', minutes=10, args=[bot], misfire_grace_time=120)
+    scheduler.add_job(check_wl_traffic_cron, trigger='interval', minutes=30, args=[bot], misfire_grace_time=600)
+    scheduler.add_job(
+        accumulate_wl_traffic_cron,
+        trigger='cron',
+        hour=WL_ACCUMULATE_HOUR,
+        minute=WL_ACCUMULATE_MINUTE,
+        id='wl_traffic_accumulate',
+        misfire_grace_time=600,
+    )
     scheduler.add_job(check_connect, trigger='interval', minutes=14, misfire_grace_time=60)
     # scheduler.add_job(check_platega, trigger='interval', minutes=1, misfire_grace_time=10)
     # scheduler.add_job(check_platega_card, trigger='interval', minutes=1, misfire_grace_time=10)

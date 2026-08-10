@@ -4,11 +4,20 @@ from decimal import Decimal, ROUND_HALF_UP
 from bot import x3, sql, bot
 from X3 import panel_username_for_site_user
 
-from config import PARTNER_PROCENT, LEAD_TRACKER_STAR_RUB_PER_STAR
+from config import PARTNER_PROCENT, LEAD_TRACKER_STAR_RUB_PER_STAR, CHECKER_ID
 from lead_tracker import post_payment_success
 from keyboard import create_kb, keyboard_sub_after_buy, BTN_BACK
 from lexicon import lexicon
 from logging_config import logger
+from wl_traffic.service import (
+    fetch_panel_user,
+    get_wl_used_gb_for_user,
+    parse_traffic_duration,
+    reassign_to_active_squad,
+    subscription_bonus_gb,
+    user_on_limited_squad,
+)
+from wl_traffic.texts import format_wl_checker_traffic_purchase
 
 
 def _payment_rub_for_partner(method: str, amount: int | float) -> int:
@@ -63,6 +72,44 @@ async def _credit_partner_commission(payer_uid: int, method: str, amount: int | 
         logger.error("❌ Ошибка начисления партнёрского вознаграждения: {}", e)
 
 
+async def _process_traffic_topup(user_id: int, gb: int, method: str, amount: int | float) -> bool:
+    """Пополнение трафика Антиглушилка после успешной оплаты."""
+    await sql.add_wl_limit(user_id, float(gb))
+
+    panel_user = await fetch_panel_user(x3, user_id)
+    if panel_user:
+        await reassign_to_active_squad(x3, panel_user)
+
+    trafic_wl, limit_wl = await sql.get_wl_limits(user_id)
+    used_gb = await get_wl_used_gb_for_user(x3, user_id, trafic_wl)
+
+    await post_payment_success(user_id, method, amount)
+    await _credit_partner_commission(user_id, method, amount)
+
+    if CHECKER_ID is not None:
+        try:
+            await bot.send_message(
+                chat_id=CHECKER_ID,
+                text=format_wl_checker_traffic_purchase(user_id, gb, used_gb, limit_wl),
+            )
+        except Exception as e:
+            logger.error(f"❌ Ошибка уведомления CHECKER_ID о покупке трафика {user_id}: {e}")
+
+    if user_id > 0:
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=lexicon["wl_traffic_success"].format(gb=gb),
+                parse_mode="HTML",
+                reply_markup=create_kb(1, back_to_main=BTN_BACK),
+            )
+        except Exception as e:
+            logger.error(f"❌ Ошибка уведомления о пополнении трафика {user_id}: {e}")
+
+    logger.info(f"✅ Трафик Антиглушилка +{gb} GB для user={user_id}")
+    return True
+
+
 async def process_confirmed_payment(payload) -> bool:
     """Обработка подтвержденного платежа. True — подписка/подарок применены успешно."""
     try:
@@ -78,7 +125,19 @@ async def process_confirmed_payment(payload) -> bool:
             else:
                 payload_parts[item] = "1"
         user_id = int(payload_parts.get('user_id', 0))
-        duration = int(payload_parts.get('duration', 0))
+        duration_raw = payload_parts.get('duration', '0')
+        traffic_gb = parse_traffic_duration(str(duration_raw))
+        if traffic_gb is not None:
+            method = payload_parts.get('method', '')
+            if method in ('sbp', 'stars', 'card', 'crypto', 'cryptobot', 'wata_sbp', 'wata_card', 'fk_sbp', 'fk_card'):
+                amount = int(payload_parts.get('amount', 0))
+            else:
+                amount = float(payload_parts.get('amount', 0.0))
+            if method == 'stars':
+                await sql.add_payment_stars(user_id, amount, False, payload)
+            return await _process_traffic_topup(user_id, traffic_gb, method, amount)
+
+        duration = int(duration_raw)
         white_flag = payload_parts.get('white', 'False') == 'True'
         is_gift = payload_parts.get('gift', 'False') == 'True'
         method = payload_parts.get('method', '')
@@ -238,6 +297,14 @@ async def process_confirmed_payment(payload) -> bool:
             else:
                 await sql.add_user(user_id, True)
             await sql.update_reserve_field(user_id)
+
+            bonus_gb = subscription_bonus_gb(duration)
+            if bonus_gb > 0:
+                await sql.add_wl_limit(user_id, bonus_gb)
+
+            panel_user = await fetch_panel_user(x3, user_id, white_flag)
+            if panel_user and user_on_limited_squad(panel_user):
+                await reassign_to_active_squad(x3, panel_user)
 
             await post_payment_success(user_id, method, amount)
             await _credit_partner_commission(user_id, method, amount)

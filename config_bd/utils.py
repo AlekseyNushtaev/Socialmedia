@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple, Dict, Any
 
 from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, PaymentsCryptobot, PaymentsStars, Online, \
     WhiteCounter, PaymentsCards, PaymentsPlategaCrypto, PaymentsWataSBP, PaymentsWataCard, PaymentsFkSBP, \
-    LinkingCodes, PasswordResetCodes
+    LinkingCodes, PasswordResetCodes, WlTrafficMeta
 from lexicon import dct_price
 from logging_config import logger
 
@@ -80,6 +80,7 @@ def _user_tuple(user: Users) -> Tuple:
         user.field_bool_1, user.field_bool_2, user.field_bool_3,
         user.password_hash, user.linked_telegram_id,
         user.partner, user.partner_balance, user.partner_pay, user.partner_flag,
+        user.trafic_wl, user.limit_wl,
     )
 
 
@@ -570,6 +571,103 @@ class AsyncSQL:
             stmt = update(Users).where(Users.user_id == user_id).values(reserve_field=True)
             await session.execute(stmt)
             await session.commit()
+
+    async def init_wl_trial_limits(self, user_id: int) -> None:
+        """При первом триале (limit_wl=0): trafic_wl=0, limit_wl=2 GB. Иначе не трогаем."""
+        from wl_traffic.constants import WL_TRIAL_LIMIT_GB
+
+        async with self.session_factory() as session:
+            stmt = (
+                update(Users)
+                .where(
+                    Users.user_id == user_id,
+                    or_(Users.limit_wl.is_(None), Users.limit_wl <= 0),
+                )
+                .values(trafic_wl=0.0, limit_wl=WL_TRIAL_LIMIT_GB)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+    async def add_wl_limit(self, user_id: int, gb: float) -> None:
+        async with self.session_factory() as session:
+            stmt = select(Users).where(Users.user_id == user_id)
+            result = await session.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user is None:
+                return
+            current = float(user.limit_wl or 0.0)
+            user.limit_wl = round(current + gb, 2)
+            await session.commit()
+
+    async def update_trafic_wl(self, user_id: int, gb: float) -> None:
+        async with self.session_factory() as session:
+            stmt = (
+                update(Users)
+                .where(Users.user_id == user_id)
+                .values(trafic_wl=round(gb, 2))
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+    async def add_trafic_wl(self, user_id: int, gb: float) -> None:
+        """Прибавляет GB к накопленному trafic_wl (ежедневное накопление с панели)."""
+        if gb <= 0:
+            return
+        async with self.session_factory() as session:
+            stmt = select(Users).where(Users.user_id == user_id)
+            result = await session.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user is None:
+                return
+            current = float(user.trafic_wl or 0.0)
+            user.trafic_wl = round(current + gb, 2)
+            await session.commit()
+
+    async def get_wl_traffic_last_closed_date(self) -> Optional[date]:
+        """Последний WL-день, закрытый accumulate (глобально для бота)."""
+        async with self.session_factory() as session:
+            stmt = select(WlTrafficMeta.last_closed_date).where(WlTrafficMeta.id == 1)
+            result = await session.execute(stmt)
+            return result.scalar_one_or_none()
+
+    async def set_wl_traffic_last_closed_date(self, day: date) -> None:
+        """Помечает WL-день как закрытый (идемпотентность accumulate)."""
+        async with self.session_factory() as session:
+            stmt = select(WlTrafficMeta).where(WlTrafficMeta.id == 1)
+            result = await session.execute(stmt)
+            row = result.scalar_one_or_none()
+            if row is None:
+                row = WlTrafficMeta(id=1, last_closed_date=day)
+                session.add(row)
+            else:
+                row.last_closed_date = day
+            await session.commit()
+
+    async def get_wl_limits(self, user_id: int) -> tuple[float, float]:
+        """Возвращает (trafic_wl, limit_wl) в GB."""
+        async with self.session_factory() as session:
+            stmt = select(Users.trafic_wl, Users.limit_wl).where(Users.user_id == user_id)
+            result = await session.execute(stmt)
+            row = result.one_or_none()
+            if row is None:
+                return 0.0, 0.0
+            return float(row[0] or 0.0), float(row[1] or 0.0)
+
+    async def select_users_active_subscription(self) -> List[Tuple[int, float, float]]:
+        """Пользователи с активной PRO-подпиской: (user_id, trafic_wl, limit_wl)."""
+        async with self.session_factory() as session:
+            now = datetime.now()
+            stmt = select(Users.user_id, Users.trafic_wl, Users.limit_wl).where(
+                Users.is_delete == False,
+                Users.in_panel == True,
+                Users.subscription_end_date.isnot(None),
+                Users.subscription_end_date > now,
+            )
+            result = await session.execute(stmt)
+            return [
+                (int(r[0]), float(r[1] or 0.0), float(r[2] or 0.0))
+                for r in result.all()
+            ]
 
     async def update_delete(self, user_id: int, booly: bool):
         async with self.session_factory() as session:

@@ -758,6 +758,176 @@ class X3:
             logger.error(f"Ошибка при получении всех пользователей: {e}")
         return users_all
 
+    async def list_nodes(self) -> List[dict]:
+        """GET /api/nodes — список нод панели."""
+        try:
+            session = await self._get_session()
+            async with session.get(
+                f"{self.target_url}/api/nodes",
+                params=self.params,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                if response.status != 200:
+                    err = (await response.text())[:300]
+                    logger.warning(f"list_nodes: HTTP {response.status}: {err}")
+                    return []
+                data = await response.json()
+                resp = data.get("response") or data
+                if isinstance(resp, list):
+                    return resp
+                if isinstance(resp, dict):
+                    return resp.get("nodes") or []
+                return []
+        except Exception as e:
+            logger.error(f"list_nodes: {e}")
+            return []
+
+    async def get_node_uuid_by_name(self, node_name: str) -> Optional[str]:
+        """UUID ноды по имени (кэш на время жизни экземпляра X3)."""
+        cache: Dict[str, str] = getattr(self, "_node_uuid_by_name", {})
+        if node_name in cache:
+            return cache[node_name]
+
+        for node in await self.list_nodes():
+            name = node.get("name") or node.get("nodeName") or ""
+            if name != node_name:
+                continue
+            node_uuid = node.get("uuid") or node.get("nodeUuid")
+            if node_uuid:
+                cache[node_name] = str(node_uuid)
+                self._node_uuid_by_name = cache
+                return cache[node_name]
+
+        logger.warning(f"get_node_uuid_by_name: нода «{node_name}» не найдена")
+        return None
+
+    async def get_node_users_bandwidth_legacy(
+        self, node_uuid: str, start: str, end: str,
+    ) -> Optional[List[dict]]:
+        """
+        Трафик всех пользователей на ноде за период (legacy bulk).
+        Пробует новый и старый путь API.
+        """
+        params = {**self.params, "start": start, "end": end}
+        urls = (
+            f"{self.target_url}/api/bandwidth-stats/nodes/{node_uuid}/users/legacy",
+            f"{self.target_url}/api/nodes/usage/{node_uuid}/users/range",
+        )
+        try:
+            session = await self._get_session()
+            for url in urls:
+                async with session.get(
+                    url,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=120),
+                ) as response:
+                    if response.status == 404:
+                        continue
+                    if response.status != 200:
+                        err = (await response.text())[:300]
+                        logger.warning(
+                            f"node users bandwidth {node_uuid}: HTTP {response.status}: {err}"
+                        )
+                        continue
+                    try:
+                        data = await response.json()
+                    except (aiohttp.ContentTypeError, ValueError):
+                        continue
+                    resp = data.get("response") or data
+                    if isinstance(resp, list):
+                        return resp
+            logger.error(
+                f"node users bandwidth {node_uuid}: ни один legacy-эндпoинт не вернул данные"
+            )
+            return None
+        except Exception as e:
+            logger.error(f"node users bandwidth {node_uuid}: {e}")
+            return None
+
+    @staticmethod
+    def aggregate_bandwidth_by_username(records: List[dict]) -> Dict[str, float]:
+        """Суммирует total (байты) по username из legacy-ответа панели."""
+        totals: Dict[str, float] = {}
+        for item in records:
+            if not isinstance(item, dict):
+                continue
+            username = str(item.get("username") or "")
+            if not username:
+                continue
+            totals[username] = totals.get(username, 0.0) + float(item.get("total") or 0)
+        return totals
+
+    @staticmethod
+    def aggregate_bandwidth_by_user_uuid(records: List[dict]) -> Dict[str, float]:
+        """Суммирует total (байты) по userUuid из legacy-ответа панели."""
+        totals: Dict[str, float] = {}
+        for item in records:
+            if not isinstance(item, dict):
+                continue
+            user_uuid = str(item.get("userUuid") or item.get("uuid") or "")
+            if not user_uuid:
+                continue
+            totals[user_uuid] = totals.get(user_uuid, 0.0) + float(item.get("total") or 0)
+        return totals
+
+    async def get_user_bandwidth_stats(self, user_uuid: str, start: str, end: str) -> Optional[dict]:
+        """
+        GET /api/bandwidth-stats/users/{uuid}?start=&end=
+        Возвращает тело ответа или None.
+        """
+        try:
+            session = await self._get_session()
+            params = {**self.params, "start": start, "end": end}
+            async with session.get(
+                f"{self.target_url}/api/bandwidth-stats/users/{user_uuid}",
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                if response.status != 200:
+                    err = (await response.text())[:300]
+                    logger.warning(
+                        f"bandwidth-stats/users {user_uuid}: HTTP {response.status}: {err}"
+                    )
+                    return None
+                try:
+                    return await response.json()
+                except (aiohttp.ContentTypeError, ValueError):
+                    return None
+        except Exception as e:
+            logger.error(f"bandwidth-stats/users {user_uuid}: {e}")
+            return None
+
+    async def get_user_node_bandwidth_bytes(
+        self, user_uuid: str, node_name: str,
+    ) -> float:
+        """Суммарный трафик пользователя на указанной ноде (байты)."""
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        start = "2024-01-01"
+        end = today.isoformat()
+        data = await self.get_user_bandwidth_stats(user_uuid, start, end)
+        if not data:
+            return 0.0
+
+        resp = data.get("response") or data
+        if isinstance(resp, list):
+            total = 0.0
+            for item in resp:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("nodeName") or item.get("name") or ""
+                if name == node_name:
+                    total += float(item.get("total") or 0)
+            return total
+
+        # topNodes и series содержат одни и те же total по ноде — не суммировать оба.
+        for key in ("topNodes", "series"):
+            for item in resp.get(key) or []:
+                name = item.get("name") or item.get("nodeName") or ""
+                if name == node_name:
+                    return float(item.get("total") or 0)
+
+        return 0.0
+
     async def update_user_squads(self, user_uuid: str, squads: list):
         """
         Обновляет поле activeInternalSquads у пользователя по его UUID.

@@ -10,6 +10,7 @@ from keyboard import create_kb, BTN_BACK
 from lexicon import lexicon, dct_price, dct_desc
 from logging_config import logger
 from payments.payment_limits import payment_creation_allowed
+from wl_traffic.texts import format_pro_payment_link
 
 
 def _cryptobot_payload_tail(source: Optional[str]) -> str:
@@ -181,7 +182,7 @@ async def process_payment_crypto(callback: CallbackQuery):
     )
 
     if result['status'] == 'pending':
-        text = lexicon['payment_link_white'] if white_flag else lexicon['payment_link']
+        text = lexicon['payment_link_white'] if white_flag else format_pro_payment_link(int(duration))
         if gift_flag:
             text += '\n\nДля оплаты <b>подарочной подписки</b> перейдите по ссылке:'
         else:

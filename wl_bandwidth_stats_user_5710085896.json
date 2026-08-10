@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "username": "5710085896",
+    "user_uuid": "cbad377a-3cf4-492e-9083-9184d557a130",
+    "start": "2026-08-01",
+    "end": "2026-08-07",
+    "endpoint": "https://33pn66.gosocial.run/api/bandwidth-stats/users/cbad377a-3cf4-492e-9083-9184d557a130"
+  },
+  "panel_user_summary": {
+    "username": "5710085896",
+    "uuid": "cbad377a-3cf4-492e-9083-9184d557a130",
+    "status": "ACTIVE",
+    "userTraffic": {
+      "usedTrafficBytes": 8353656462,
+      "lifetimeUsedTrafficBytes": 8353656462,
+      "onlineAt": "2026-08-07T11:10:15.135Z",
+      "lastConnectedNodeUuid": "86a1c09f-ecb5-4d2a-aee7-de6888e19f03",
+      "firstConnectedAt": "2026-07-27T04:55:00.299Z"
+    }
+  },
+  "bandwidth_stats": {
+    "response": {
+      "categories": [
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-03",
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07"
+      ],
+      "series": [
+        {
+          "uuid": "82866a90-ae63-4cc8-b5a8-aff5bf631892",
+          "name": "ALEXHOST-SW-X-001",
+          "color": "#631892",
+          "countryCode": "SE",
+          "total": 2099840905,
+          "data": [
+            1617533228,
+            982,
+            18550000,
+            463756155,
+            540,
+            0,
+            0
+          ]
+        },
+        {
+          "uuid": "ab5342f0-3088-4bc1-b849-af0bbedcc108",
+          "name": "ALEXHOST-SE-001",
+          "color": "#dcc108",
+          "countryCode": "SE",
+          "total": 911335053,
+          "data": [
+            125543335,
+            378818098,
+            109679256,
+            203140101,
+            94154263,
+            0,
+            0
+          ]
+        },
+        {
+          "uuid": "86a1c09f-ecb5-4d2a-aee7-de6888e19f03",
+          "name": "ALEXHOST-SW-X-002",
+          "color": "#e19f03",
+          "countryCode": "SE",
+          "total": 587101659,
+          "data": [
+            3242,
+            0,
+            0,
+            0,
+            35119606,
+            425677881,
+            126300930
+          ]
+        }
+      ],
+      "sparklineData": [
+        1743079805,
+        378819080,
+        128229256,
+        666896256,
+        129274409,
+        425677881,
+        126300930
+      ],
+      "topNodes": [
+        {
+          "uuid": "82866a90-ae63-4cc8-b5a8-aff5bf631892",
+          "name": "ALEXHOST-SW-X-001",
+          "color": "#631892",
+          "countryCode": "SE",
+          "total": 2099840905
+        },
+        {
+          "uuid": "ab5342f0-3088-4bc1-b849-af0bbedcc108",
+          "name": "ALEXHOST-SE-001",
+          "color": "#dcc108",
+          "countryCode": "SE",
+          "total": 911335053
+        },
+        {
+          "uuid": "86a1c09f-ecb5-4d2a-aee7-de6888e19f03",
+          "name": "ALEXHOST-SW-X-002",
+          "color": "#e19f03",
+          "countryCode": "SE",
+          "total": 587101659
+        }
+      ]
+    }
+  }
+}

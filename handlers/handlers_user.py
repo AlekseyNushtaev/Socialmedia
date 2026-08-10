@@ -27,6 +27,8 @@ from aiogram.types import (
 )
 from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, Command
 from lexicon import lexicon
+from wl_traffic.texts import format_pro_payment_link
+from wl_traffic.service import credit_wl_subscription_bonus
 
 
 router: Router = Router()
@@ -345,6 +347,7 @@ async def promo_cheremsha(message: Message):
 
     await sql.update_in_panel(uid)
     await sql.update_field_bool_2(uid, True)
+    await credit_wl_subscription_bonus(sql, uid, 7)
 
     sub_url = await x3.sublink(user_id_str)
     await message.answer(
@@ -382,6 +385,7 @@ async def trial_return_get_cb(callback: CallbackQuery):
         return
 
     await sql.update_in_panel(uid)
+    await sql.init_wl_trial_limits(uid)
     await sql.update_field_bool_3(uid, True)
     await post_user_trial(uid)
     await callback.message.answer(
@@ -394,13 +398,23 @@ async def trial_return_get_cb(callback: CallbackQuery):
     )
 
 
+def _duration_days_from_tariff_cb(data: str) -> int:
+    key = data.replace("gift_r_", "").replace("r_", "")
+    if "white" in key:
+        key = key.replace("white_", "")
+    if "old" in key:
+        key = key.replace("old", "")
+    return int(key)
+
+
 @router.callback_query(F.data.in_({'r_7', 'r_30', 'r_90', 'r_180', 'r_365', 'r_white_30'}))
 async def process_payment_method(callback: CallbackQuery):
     await callback.answer()
-    text = lexicon['payment_link']
     if 'white' in callback.data:
         await sql.add_white_counter_if_not_exists(callback.from_user.id)
         text = lexicon['payment_link_white']
+    else:
+        text = format_pro_payment_link(_duration_days_from_tariff_cb(callback.data))
     text += '\n\nВыберите способ оплаты:'
     tariff = callback.data
     await callback.message.answer(text, reply_markup=keyboard_payment_method(tariff))
@@ -429,6 +443,7 @@ async def free_vpn_cb(callback: CallbackQuery):
         await sql.update_in_panel(callback.from_user.id)
     else:
         await sql.add_user(callback.from_user.id, True)
+    await sql.init_wl_trial_limits(callback.from_user.id)
     user_id = str(callback.from_user.id)
     sub_url = await x3.sublink(user_id)
 
@@ -572,10 +587,11 @@ async def gift_subscription_start(callback: CallbackQuery):
 @router.callback_query(F.data.startswith('gift_'))
 async def process_gift_payment_method(callback: CallbackQuery):
     await callback.answer()
-    text = lexicon['payment_link']
     if 'white' in callback.data:
         await sql.add_white_counter_if_not_exists(callback.from_user.id)
         text = lexicon['payment_link_white']
+    else:
+        text = format_pro_payment_link(_duration_days_from_tariff_cb(callback.data))
     tariff = callback.data
     text += '\n\nВыберите способ оплаты <b>подарочной подписки</b>:'
     await callback.message.answer(text, reply_markup=keyboard_payment_method(tariff))
@@ -624,6 +640,7 @@ async def activate_gift(message: Message, gift_id: str):
 
         # Обновляем базу данных
         await sql.update_in_panel(message.from_user.id)
+        await credit_wl_subscription_bonus(sql, message.from_user.id, int(duration))
         if was_in_db:
             logger.info(
                 f'Юзер {message.from_user.id} - {message.from_user.username} получил в подарок подписку, уже был в БД')
