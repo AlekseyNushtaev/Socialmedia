@@ -17,6 +17,7 @@ from handlers.handlers_broadcast import BroadcastState
 from sheduler.check_connect import check_connect
 from telegram_ids import is_telegram_chat_id
 from X3 import panel_username_for_site_user
+from wl_traffic.service import get_wl_used_gb_for_user
 
 router = Router()
 
@@ -271,10 +272,16 @@ async def pay_info_command(message: Message):
         ts = _pay_dt_str(tc)
         pay_lines.append(f"• {ts} — {kind} — {days_s} дн.")
 
+    trafic_wl, limit_wl = await sql.get_wl_limits(target_id)
+    used_wl_gb = await get_wl_used_gb_for_user(x3, target_id, trafic_wl)
+
     body = (
         f"<b>/pay {target_id}</b>\n\n"
         f"Подписка в БД бота — {_pay_dt_str(sub_db)}\n"
         f"Подписка в панели — {_pay_panel_sub_line(ar_reg)}\n\n"
+        f"📡 <b>Антиглушилка (WL-трафик)</b>\n"
+        f"├ Лимит: <b>{limit_wl:.2f} GB</b>\n"
+        f"└ Использовано: <b>{used_wl_gb:.2f} GB</b>\n\n"
         f"<b>Платежи:</b>\n"
     )
     if pay_lines:
@@ -283,7 +290,7 @@ async def pay_info_command(message: Message):
         body += "Нет"
 
     for chunk in _split_long_text(body):
-        await message.answer(chunk)
+        await message.answer(chunk, parse_mode="HTML")
 
 
 async def _partner_admin_stats_text(tg_id: int) -> Optional[str]:
