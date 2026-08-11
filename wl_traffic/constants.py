@@ -24,6 +24,7 @@ WL_SQUAD_ACTIVE = (
 
 WL_TRIAL_LIMIT_GB = 2.0
 WL_GB_PER_MONTH = 10
+WL_LOW_TRAFFIC_WARNING_GB = 1.0
 
 # gb -> price (₽)
 WL_TRAFFIC_TARIFFS: dict[str, int] = {

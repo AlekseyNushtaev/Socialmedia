@@ -20,11 +20,16 @@ from wl_traffic.service import (
     panel_username_for_billing_uid,
     reassign_to_active_squad,
     reassign_to_limited_squad,
+    should_send_wl_low_traffic_warning,
     user_on_limited_squad,
     wl_traffic_day,
     wl_traffic_gb_for_panel_user,
 )
-from wl_traffic.texts import format_wl_checker_exceeded_report, format_wl_limit_exceeded
+from wl_traffic.texts import (
+    format_wl_checker_exceeded_report,
+    format_wl_limit_exceeded,
+    format_wl_traffic_low_warning,
+)
 
 _SQUAD_REASSIGN_DELAY_SEC = 10
 
@@ -34,6 +39,31 @@ async def _send_wl_limit_push(
 ) -> None:
     """Push о превышении лимита; повтор при обрыве соединения с Telegram API."""
     text = format_wl_limit_exceeded(limit_gb, used_gb)
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            await bot.send_message(
+                chat_id=billing_uid,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=keyboard_wl_traffic_tariffs(back_callback="back_to_main"),
+            )
+            return
+        except TelegramNetworkError as e:
+            last_err = e
+            if attempt < 2:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            raise
+    if last_err:
+        raise last_err
+
+
+async def _send_wl_low_traffic_push(
+    bot: Bot, billing_uid: int, limit_gb: float, used_gb: float,
+) -> None:
+    """Push: осталось меньше 1 GB WL-трафика."""
+    text = format_wl_traffic_low_warning(limit_gb, used_gb)
     last_err: Exception | None = None
     for attempt in range(3):
         try:
@@ -79,7 +109,7 @@ async def check_wl_traffic_cron(bot: Bot) -> None:
         if not users:
             return
 
-        with_limit = sum(1 for _, _, limit_wl in users if limit_wl > 0)
+        with_limit = sum(1 for _, _, limit_wl, _ in users if limit_wl > 0)
         if with_limit == 0:
             return
 
@@ -100,9 +130,8 @@ async def check_wl_traffic_cron(bot: Bot) -> None:
 
         pending_limited: list[tuple[int, dict[str, Any], float, float]] = []
         pending_active: list[tuple[int, dict[str, Any], float, float]] = []
-        exceeded_report: list[tuple[int, float, float]] = []
 
-        for billing_uid, trafic_db, limit_wl in users:
+        for billing_uid, trafic_db, limit_wl, low_warning_sent in users:
             if limit_wl <= 0:
                 continue
 
@@ -127,7 +156,6 @@ async def check_wl_traffic_cron(bot: Bot) -> None:
                 )
 
                 if used_gb > limit_wl:
-                    exceeded_report.append((billing_uid, used_gb, limit_wl))
                     if user_on_limited_squad(panel_user):
                         logger.info(
                             f"check_wl_traffic: uid={billing_uid} уже на limited squad, пропуск"
@@ -145,12 +173,34 @@ async def check_wl_traffic_cron(bot: Bot) -> None:
                             logger.error(f"check_wl_traffic: push uid={billing_uid}: {e}")
 
                     pending_limited.append((billing_uid, panel_user, limit_wl, used_gb))
+                elif (
+                    not low_warning_sent
+                    and should_send_wl_low_traffic_warning(used_gb, limit_wl)
+                    and billing_uid > 0
+                ):
+                    try:
+                        await _send_wl_low_traffic_push(bot, billing_uid, limit_wl, used_gb)
+                        await sql.update_field_bool_2(billing_uid, True)
+                        logger.info(
+                            f"check_wl_traffic: uid={billing_uid} push <1 GB "
+                            f"({used_gb:.2f}/{limit_wl:.2f} GB), field_bool_2=True"
+                        )
+                    except TelegramNetworkError as e:
+                        logger.warning(
+                            f"check_wl_traffic: low-traffic push uid={billing_uid} — сеть: {e}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"check_wl_traffic: low-traffic push uid={billing_uid}: {e}"
+                        )
                 elif user_on_limited_squad(panel_user):
                     pending_active.append((billing_uid, panel_user, limit_wl, used_gb))
 
             except Exception as e:
                 username = panel_username_for_billing_uid(billing_uid)
                 logger.error(f"check_wl_traffic: uid={billing_uid} ({username}): {e}")
+
+        checker_limited: list[tuple[int, float, float]] = []
 
         if pending_limited:
             logger.info(
@@ -167,12 +217,15 @@ async def check_wl_traffic_cron(bot: Bot) -> None:
                             f"check_wl_traffic: не удалось переназначить squad uid={billing_uid}"
                         )
                         continue
+                    checker_limited.append((billing_uid, used_gb, limit_gb))
                     logger.info(
                         f"check_wl_traffic: лимит превышен uid={billing_uid} "
                         f"({used_gb:.2f}/{limit_gb:.2f} GB), squad -> limited"
                     )
                 except Exception as e:
                     logger.error(f"check_wl_traffic: squad uid={billing_uid}: {e}")
+
+        await _send_checker_exceeded_report(bot, checker_limited)
 
         for billing_uid, panel_user, limit_gb, used_gb in pending_active:
             try:
@@ -188,8 +241,6 @@ async def check_wl_traffic_cron(bot: Bot) -> None:
                 )
             except Exception as e:
                 logger.error(f"check_wl_traffic: active squad uid={billing_uid}: {e}")
-
-        await _send_checker_exceeded_report(bot, exceeded_report)
 
     except Exception as e:
         logger.error(f"check_wl_traffic_cron: {e}")

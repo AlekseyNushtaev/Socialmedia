@@ -1106,6 +1106,33 @@ async def add_new_users_command(message: Message):
     logger.info(f"Админ {message.from_user.id} /add_new_users: {report}")
 
 
+@router.message(Command(commands=['reset_field_bool_2']))
+async def reset_field_bool_2_command(message: Message):
+    """Сброс field_bool_2: у всех или у одного user_id."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    args = (message.text or "").split()
+    if len(args) >= 2:
+        try:
+            target_id = int(args[1].strip())
+        except ValueError:
+            await message.answer("❌ Использование: /reset_field_bool_2 [telegram_id]")
+            return
+        user_row = await sql.get_user(target_id)
+        if not user_row:
+            await message.answer(f"❌ Пользователь {target_id} не найден.")
+            return
+        await sql.update_field_bool_2(target_id, False)
+        await message.answer(f"Готово: field_bool_2 = false для user_id {target_id}.")
+        logger.info(f"Админ {message.from_user.id}: сброс field_bool_2 для {target_id}")
+        return
+
+    n = await sql.reset_field_bool_2_all()
+    await message.answer(f"Готово: field_bool_2 = false у {n} записей в users.")
+    logger.info(f"Админ {message.from_user.id}: сброс field_bool_2 для всех, обновлено строк: {n}")
+
+
 @router.message(Command(commands=['reset_bool3']))
 async def reset_field_bool_3_all_command(message: Message):
     """Сброс field_bool_3 у всех пользователей (триал / одноразовые акции)."""

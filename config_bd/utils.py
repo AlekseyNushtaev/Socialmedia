@@ -597,6 +597,8 @@ class AsyncSQL:
                 return
             current = float(user.limit_wl or 0.0)
             user.limit_wl = round(current + gb, 2)
+            if gb > 0:
+                user.field_bool_2 = False
             await session.commit()
 
     async def update_trafic_wl(self, user_id: int, gb: float) -> None:
@@ -653,11 +655,16 @@ class AsyncSQL:
                 return 0.0, 0.0
             return float(row[0] or 0.0), float(row[1] or 0.0)
 
-    async def select_users_active_subscription(self) -> List[Tuple[int, float, float]]:
-        """Пользователи с активной PRO-подпиской: (user_id, trafic_wl, limit_wl)."""
+    async def select_users_active_subscription(self) -> List[Tuple[int, float, float, bool]]:
+        """Пользователи с активной PRO-подпиской: (user_id, trafic_wl, limit_wl, field_bool_2)."""
         async with self.session_factory() as session:
             now = datetime.now()
-            stmt = select(Users.user_id, Users.trafic_wl, Users.limit_wl).where(
+            stmt = select(
+                Users.user_id,
+                Users.trafic_wl,
+                Users.limit_wl,
+                Users.field_bool_2,
+            ).where(
                 Users.is_delete == False,
                 Users.in_panel == True,
                 Users.subscription_end_date.isnot(None),
@@ -665,7 +672,7 @@ class AsyncSQL:
             )
             result = await session.execute(stmt)
             return [
-                (int(r[0]), float(r[1] or 0.0), float(r[2] or 0.0))
+                (int(r[0]), float(r[1] or 0.0), float(r[2] or 0.0), bool(r[3]))
                 for r in result.all()
             ]
 
@@ -817,6 +824,13 @@ class AsyncSQL:
             stmt = update(Users).where(Users.user_id == user_id).values(field_bool_3=value)
             await session.execute(stmt)
             await session.commit()
+
+    async def reset_field_bool_2_all(self) -> int:
+        """Всем строкам users: field_bool_2 = False. Возвращает число обновлённых записей."""
+        async with self.session_factory() as session:
+            result = await session.execute(update(Users).values(field_bool_2=False))
+            await session.commit()
+            return int(result.rowcount or 0)
 
     async def reset_field_bool_3_all(self) -> int:
         """Всем строкам users: field_bool_3 = False. Возвращает число обновлённых записей."""

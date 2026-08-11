@@ -21,6 +21,13 @@ def format_wl_limit_exceeded(limit_gb: float, used_gb: float) -> str:
     )
 
 
+def format_wl_traffic_low_warning(limit_gb: float, used_gb: float) -> str:
+    return lexicon["wl_traffic_low_warning"].format(
+        limit_gb=limit_gb,
+        used_gb=used_gb,
+    )
+
+
 def format_wl_checker_exceeded_report(
     exceeded: list[tuple[int, float, float]],
 ) -> str:

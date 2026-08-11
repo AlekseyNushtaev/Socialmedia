@@ -12,6 +12,7 @@ from wl_traffic.constants import (
     WL_DAY_RESET_HOUR,
     WL_GB_PER_MONTH,
     WL_LEGACY_RETRIES,
+    WL_LOW_TRAFFIC_WARNING_GB,
     WL_NODE_NAME,
     WL_SQUAD_ACTIVE,
     WL_SQUAD_LIMITED,
@@ -205,6 +206,14 @@ def wl_traffic_gb_for_panel_user(
 def compute_wl_used_gb(trafic_wl_db: float, day_gb: float) -> float:
     """Итого использовано: накопленный trafic_wl + расход за текущий WL-день."""
     return round(float(trafic_wl_db or 0.0) + float(day_gb or 0.0), 2)
+
+
+def should_send_wl_low_traffic_warning(used_gb: float, limit_gb: float) -> bool:
+    """used < limit и до исчерпания осталось меньше 1 GB."""
+    return (
+        used_gb < limit_gb
+        and used_gb + WL_LOW_TRAFFIC_WARNING_GB > limit_gb
+    )
 
 
 async def get_wl_used_gb_for_user(
