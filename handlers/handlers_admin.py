@@ -5,7 +5,7 @@ from typing import Optional
 from bot import sql, x3, bot
 from config import ADMIN_IDS, CHECKER_ID
 from lexicon import lexicon
-from keyboard import create_kb, STYLE_PRIMARY, STYLE_SUCCESS, STYLE_DANGER, keyboard_sub_after_buy
+from keyboard import create_kb, STYLE_PRIMARY, STYLE_SUCCESS, STYLE_DANGER, keyboard_sub_after_buy, BTN_BACK
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
@@ -17,7 +17,12 @@ from handlers.handlers_broadcast import BroadcastState
 from sheduler.check_connect import check_connect
 from telegram_ids import is_telegram_chat_id
 from X3 import panel_username_for_site_user
-from wl_traffic.service import get_wl_used_gb_for_user
+from wl_traffic.service import (
+    fetch_panel_user,
+    get_wl_used_gb_for_user,
+    reassign_to_active_squad,
+    user_on_limited_squad,
+)
 
 router = Router()
 
@@ -1131,6 +1136,87 @@ async def reset_field_bool_2_command(message: Message):
     n = await sql.reset_field_bool_2_all()
     await message.answer(f"Готово: field_bool_2 = false у {n} записей в users.")
     logger.info(f"Админ {message.from_user.id}: сброс field_bool_2 для всех, обновлено строк: {n}")
+
+
+@router.message(Command(commands=['add_traffic']))
+async def add_traffic_command(message: Message):
+    """Админ: добавить GB к limit_wl, при необходимости вернуть на active squad."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    args = (message.text or "").split()
+    if len(args) < 3:
+        await message.answer(
+            "❌ Использование: /add_traffic <telegram_id> <GB>\n"
+            "Например: /add_traffic 123456789 10"
+        )
+        return
+
+    try:
+        target_id = int(args[1].strip())
+        gb = float(args[2].strip().replace(",", "."))
+    except ValueError:
+        await message.answer("❌ ID и количество GB должны быть числами.")
+        return
+
+    if gb <= 0:
+        await message.answer("❌ Количество GB должно быть больше 0.")
+        return
+
+    user_row = await sql.get_user(target_id)
+    if not user_row:
+        await message.answer(f"❌ Пользователь {target_id} не найден в базе данных.")
+        return
+
+    trafic_wl, _ = await sql.get_wl_limits(target_id)
+    used_gb = await get_wl_used_gb_for_user(x3, target_id, trafic_wl)
+
+    await sql.add_wl_limit(target_id, gb)
+    _, limit_wl = await sql.get_wl_limits(target_id)
+    remaining_gb = max(0.0, round(limit_wl - used_gb, 2))
+
+    panel_user = await fetch_panel_user(x3, target_id)
+    squad_note = ""
+    if panel_user:
+        user_row_after = await sql.get_user(target_id)
+        field_bool_2 = bool(user_row_after[25]) if user_row_after else False
+        if (
+            user_on_limited_squad(panel_user)
+            and limit_wl > used_gb
+            and not field_bool_2
+        ):
+            if await reassign_to_active_squad(x3, panel_user):
+                squad_note = "\n✅ Squad → active (Антиглушилка)"
+            else:
+                squad_note = "\n⚠️ Не удалось переназначить squad в панели"
+
+    admin_text = (
+        f"✅ <b>Добавлено {gb:g} GB</b> для user <code>{target_id}</code>{squad_note}\n\n"
+        f"├ Использовано: <b>{used_gb:.2f} GB</b>\n"
+        f"└ Лимит: <b>{limit_wl:.2f} GB</b>"
+    )
+    await message.answer(admin_text, parse_mode="HTML")
+    logger.info(
+        f"Админ {message.from_user.id}: /add_traffic uid={target_id} +{gb:g} GB "
+        f"used={used_gb:.2f} limit={limit_wl:.2f}"
+    )
+
+    if target_id > 0:
+        try:
+            await bot.send_message(
+                chat_id=target_id,
+                text=lexicon["wl_traffic_admin_grant"].format(
+                    gb=gb,
+                    limit_gb=limit_wl,
+                    used_gb=used_gb,
+                    remaining_gb=remaining_gb,
+                ),
+                parse_mode="HTML",
+                reply_markup=create_kb(1, back_to_main=BTN_BACK),
+            )
+        except Exception as e:
+            await message.answer(f"⚠️ Лимит добавлен, но push пользователю не отправлен: {e}")
+            logger.error(f"/add_traffic: push uid={target_id}: {e}")
 
 
 @router.message(Command(commands=['reset_bool3']))
