@@ -52,7 +52,6 @@ async def set_commands(bot: Bot):
 async def main() -> None:
     await create_tables()
     await migrate_wl_fields()
-    await migrate_wl_mb_to_gb()
     await migrate_wl_traffic_meta()
 
     # Инициализация диспетчера
