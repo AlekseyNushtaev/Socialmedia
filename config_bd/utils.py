@@ -676,6 +676,33 @@ class AsyncSQL:
                 for r in result.all()
             ]
 
+    async def add_wl_limit_subscribers_from_today(self, gb: float) -> list[int]:
+        """
+        +gb к limit_wl всем, у кого подписка до конца сегодня или позже (МСК).
+        field_bool_2 сбрасывается через add_wl_limit.
+        Возвращает список user_id.
+        """
+        from wl_traffic.constants import WL_TIMEZONE
+
+        if gb <= 0:
+            return []
+        today_start = (
+            datetime.now(WL_TIMEZONE)
+            .replace(hour=0, minute=0, second=0, microsecond=0)
+            .replace(tzinfo=None)
+        )
+        async with self.session_factory() as session:
+            stmt = select(Users.user_id).where(
+                Users.subscription_end_date.isnot(None),
+                Users.subscription_end_date >= today_start,
+            )
+            result = await session.execute(stmt)
+            user_ids = [int(r[0]) for r in result.all()]
+
+        for user_id in user_ids:
+            await self.add_wl_limit(user_id, gb)
+        return user_ids
+
     async def update_delete(self, user_id: int, booly: bool):
         async with self.session_factory() as session:
             stmt = update(Users).where(Users.user_id == user_id).values(is_delete=booly)

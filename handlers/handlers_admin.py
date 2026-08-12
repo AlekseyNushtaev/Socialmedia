@@ -19,8 +19,10 @@ from telegram_ids import is_telegram_chat_id
 from X3 import panel_username_for_site_user
 from wl_traffic.service import (
     fetch_panel_user,
+    fetch_wl_traffic_gb_for_day,
     get_wl_used_gb_for_user,
     reassign_to_active_squad,
+    user_on_active_squad,
     user_on_limited_squad,
 )
 
@@ -61,6 +63,7 @@ _ADD7SUB_CONNECT_KB = create_kb(
 )
 
 _ADD7SUB_PROGRESS_EVERY = 1000
+_ADD_TRAFFIC_ALL_PROGRESS_EVERY = 100
 
 _ADD2BONUS_CUTOFF = datetime(2026, 6, 23, 0, 0, 0)
 _ADD2BONUS_YES_CB = "add2bonus_yes"
@@ -1217,6 +1220,133 @@ async def add_traffic_command(message: Message):
         except Exception as e:
             await message.answer(f"⚠️ Лимит добавлен, но push пользователю не отправлен: {e}")
             logger.error(f"/add_traffic: push uid={target_id}: {e}")
+
+
+@router.message(Command(commands=['add_traffic_all']))
+async def add_traffic_all_command(message: Message):
+    """+10 GB limit_wl всем с подпиской до конца сегодня или позже (МСК)."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    from wl_traffic.constants import WL_GB_PER_MONTH
+
+    gb = float(WL_GB_PER_MONTH)
+    args = (message.text or "").split()
+    if len(args) >= 2:
+        try:
+            gb = float(args[1].strip().replace(",", "."))
+        except ValueError:
+            await message.answer(
+                "❌ Использование: /add_traffic_all [GB]\n"
+                "По умолчанию 10 GB. Пример: /add_traffic_all 10"
+            )
+            return
+
+    if gb <= 0:
+        await message.answer("❌ Количество GB должно быть больше 0.")
+        return
+
+    user_ids = await sql.add_wl_limit_subscribers_from_today(gb)
+    total = len(user_ids)
+    if not user_ids:
+        await message.answer(
+            "Нет пользователей с подпиской до конца сегодня или позже (МСК)."
+        )
+        return
+
+    await message.answer(
+        f"⏳ /add_traffic_all: +{gb:g} GB для {total} пользователей, "
+        f"отправка push и проверка squad…"
+    )
+
+    traffic_by_username, traffic_by_uuid = await fetch_wl_traffic_gb_for_day(
+        x3, retries=1,
+    )
+
+    admin_chat_id = message.chat.id
+    pushed = 0
+    squad_moved = 0
+    push_failed = 0
+    squad_failed = 0
+    skipped_non_tg = 0
+
+    for processed, target_id in enumerate(user_ids, start=1):
+        if processed % _ADD_TRAFFIC_ALL_PROGRESS_EVERY == 0:
+            try:
+                await bot.send_message(
+                    admin_chat_id,
+                    f"add_traffic_all: {processed} / {total}, "
+                    f"push {pushed}, squad → active {squad_moved}",
+                )
+            except Exception as notify_err:
+                logger.warning(
+                    "add_traffic_all: не удалось отправить прогресс админу: %s",
+                    notify_err,
+                )
+
+        trafic_wl, limit_wl = await sql.get_wl_limits(target_id)
+        used_gb = await get_wl_used_gb_for_user(
+            x3,
+            target_id,
+            trafic_wl,
+            traffic_by_username=traffic_by_username,
+            traffic_by_uuid=traffic_by_uuid,
+        )
+        remaining_gb = max(0.0, round(limit_wl - used_gb, 2))
+
+        panel_user = await fetch_panel_user(x3, target_id)
+        if (
+            panel_user
+            and not user_on_active_squad(panel_user)
+            and limit_wl > used_gb
+        ):
+            if await reassign_to_active_squad(x3, panel_user):
+                squad_moved += 1
+            else:
+                squad_failed += 1
+
+        if target_id <= 0 or not is_telegram_chat_id(target_id):
+            skipped_non_tg += 1
+            await asyncio.sleep(0.05)
+            continue
+
+        try:
+            await bot.send_message(
+                chat_id=target_id,
+                text=lexicon["wl_traffic_admin_grant"].format(
+                    gb=gb,
+                    limit_gb=limit_wl,
+                    used_gb=used_gb,
+                    remaining_gb=remaining_gb,
+                ),
+                parse_mode="HTML",
+                reply_markup=create_kb(1, back_to_main=BTN_BACK),
+            )
+            pushed += 1
+        except Exception as e:
+            push_failed += 1
+            logger.warning(
+                "add_traffic_all: push uid=%s: %s",
+                target_id,
+                e,
+            )
+
+        await asyncio.sleep(0.05)
+
+    await message.answer(
+        f"✅ <b>Готово (/add_traffic_all)</b>\n\n"
+        f"• +{gb:g} GB limit_wl: <b>{total}</b> пользователей\n"
+        f"• Push отправлено: <b>{pushed}</b>\n"
+        f"• Squad → active (белая нода): <b>{squad_moved}</b>\n"
+        f"• Ошибка push: {push_failed}\n"
+        f"• Ошибка squad: {squad_failed}\n"
+        f"• Пропущено (не Telegram chat_id): {skipped_non_tg}",
+        parse_mode="HTML",
+    )
+    logger.info(
+        f"Админ {message.from_user.id}: /add_traffic_all +{gb:g} GB, "
+        f"total={total} pushed={pushed} squad_moved={squad_moved}"
+    )
 
 
 @router.message(Command(commands=['reset_bool3']))

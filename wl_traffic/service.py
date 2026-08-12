@@ -96,6 +96,12 @@ def user_on_limited_squad(panel_user: dict) -> bool:
     return bool(squads & set(WL_SQUAD_LIMITED))
 
 
+def user_on_active_squad(panel_user: dict) -> bool:
+    """Сквад с белой нодой (Антиглушилка)."""
+    squads = set(extract_squad_uuids(panel_user))
+    return bool(squads & set(WL_SQUAD_ACTIVE))
+
+
 def panel_username_for_billing_uid(billing_uid: int, white: bool = False) -> str:
     if billing_uid <= 0:
         return panel_username_for_site_user(billing_uid, white)
