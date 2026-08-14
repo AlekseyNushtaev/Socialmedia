@@ -9,7 +9,6 @@ from bot import bot
 from config import WEB_API_PORT
 from config_bd.models import create_tables, engine
 from config_bd.migrate_users_wl_fields import migrate as migrate_wl_fields
-from config_bd.migrate_users_wl_mb_to_gb import migrate as migrate_wl_mb_to_gb
 from config_bd.migrate_wl_traffic_meta import migrate as migrate_wl_traffic_meta
 from payments import pay_stars, pay_cryptobot, pay_platega, pay_freekassa, pay_wl_traffic
 from sheduler.check_connect import check_connect

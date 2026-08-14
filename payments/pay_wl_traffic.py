@@ -50,7 +50,7 @@ async def _pay_fk(callback: CallbackQuery, ui_kind: str) -> None:
 
     payment_info = await pay(
         val=str(price),
-        des=f"Трафик Антиглушилка {gb} GB",
+        des=f"Трафик Дополнительный сервер {gb} GB",
         user_id=user_id,
         duration=duration,
         white=False,
@@ -93,7 +93,7 @@ async def wl_traffic_pay_stars(callback: CallbackQuery):
 
     await bot.send_invoice(
         callback.from_user.id,
-        title=f"Трафик Антиглушилка {gb} GB",
+        title=f"Трафик Дополнительный сервер {gb} GB",
         description=lexicon["wl_traffic_payment_intro"].format(gb=gb, price=stars_amount),
         prices=[LabeledPrice(label="XTR", amount=stars_amount)],
         provider_token="",
@@ -116,7 +116,7 @@ async def wl_traffic_pay_crypto(callback: CallbackQuery):
 
     result = await create_cryptobot_payment(
         rub_amount=rub_amount,
-        description=f"Трафик Антиглушилка {gb} GB",
+        description=f"Трафик Дополнительный сервер {gb} GB",
         user_id=user_id,
         duration=duration,
         white=False,

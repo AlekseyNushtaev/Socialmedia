@@ -75,7 +75,7 @@ async def wl_traffic_buy_cb(callback: CallbackQuery):
     back_callback = PROFILE_CB if callback.data == WL_TRAFFIC_BUY_CB else BUY_VPN_CB
     await callback.answer()
     await callback.message.answer(
-        text="📦 Выберите пакет трафика для сервера <b>Антиглушилка</b>:",
+        text="📦 Выберите пакет трафика для <b>дополнительного сервера</b>:",
         parse_mode="HTML",
         reply_markup=keyboard_wl_traffic_tariffs(back_callback=back_callback),
     )
