@@ -59,6 +59,7 @@ CATEGORY_LABELS = {
     "not_subscribed": "без подписки в панели",
     "connected_never_paid": "подключены, никогда не платили",
     "subscribed_all": "есть подписка в панели (с датой окончания)",
+    "never_bought_forever": "без тарифа Навсегда",
     "all_users": "все пользователи",
 }
 
@@ -68,19 +69,23 @@ SCOPE_LABEL = {
 }
 
 # Тексты и callback_data как в keyboard.py (главное меню и тарифы)
+# (preset_id, callback_data, text, style)
 CUSTOM_PRESETS = [
-    ("free_vpn", "✨ Попробовать бесплатно", STYLE_SUCCESS),
-    ("buy_vpn", "💰 Купить подписку", STYLE_SUCCESS),
-    ("connect_vpn", "🌐 Подключить Ускоритель соцсетей", STYLE_PRIMARY),
-    ("ref", "👭 Реферальная программа", STYLE_PRIMARY),
-    ("buy_gift", "🎁 Подарить подписку", STYLE_SUCCESS),
-    ("ref_invite", "Пригласить друзей🫶", STYLE_SUCCESS),
-    ("r_7", "👌 7 дней - 99 руб", STYLE_PRIMARY),
-    ("r_30", "🤝 30 дней - 299 руб", STYLE_PRIMARY),
-    ("r_90", "✅ 90 дней - 749 руб (выгода -16%)", STYLE_SUCCESS),
-    ("r_180", "🏆 180 дней - 1349 руб (выгода -25%)", STYLE_SUCCESS),
-    ("r_365", "💎 365 дней - 2399 руб (выгода -33%)", STYLE_SUCCESS),
-    ("r_white_30", "📱 Мобильный тариф - 499 руб", STYLE_PRIMARY),
+    ("free_vpn", "free_vpn", "✨ Попробовать бесплатно", STYLE_SUCCESS),
+    ("buy_vpn", "buy_vpn", "💰 Купить подписку", STYLE_SUCCESS),
+    ("connect_vpn", "connect_vpn", "🌐 Подключить Ускоритель соцсетей", STYLE_PRIMARY),
+    ("ref", "ref", "👭 Реферальная программа", STYLE_PRIMARY),
+    ("buy_gift", "buy_gift", "🎁 Подарить подписку", STYLE_SUCCESS),
+    ("ref_invite", "ref_invite", "Пригласить друзей🫶", STYLE_SUCCESS),
+    ("r_7", "r_7", "👌 7 дней - 99 руб", STYLE_PRIMARY),
+    ("r_30", "r_30", "🤝 30 дней - 299 руб", STYLE_PRIMARY),
+    ("r_90", "r_90", "✅ 90 дней - 749 руб (выгода -16%)", STYLE_SUCCESS),
+    ("r_180", "r_180", "🏆 180 дней - 1349 руб (выгода -25%)", STYLE_SUCCESS),
+    ("r_365", "r_365", "💎 365 дней - 2399 руб (выгода -33%)", STYLE_SUCCESS),
+    ("r_white_30", "r_white_30", "📱 Мобильный тариф - 499 руб", STYLE_PRIMARY),
+    ("forever_sale_1", "r_5000sale", '✅ Получить "Навсегда" за 2790 ₽', STYLE_SUCCESS),
+    ("forever_sale_2", "r_5000sale", '🔥 Успеть оформить "Навсегда" за 2790 ₽', STYLE_SUCCESS),
+    ("forever_sale_3", "r_5000sale", '✨ Забрать "Навсегда" за 2790 ₽', STYLE_SUCCESS),
 ]
 
 
@@ -134,8 +139,8 @@ def _keyboard_type_markup() -> InlineKeyboardMarkup:
 
 def _custom_presets_markup() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    for cb_id, text, _st in CUSTOM_PRESETS:
-        b.button(text=text[:64], callback_data=f"{BCBTN}{cb_id}")
+    for preset_id, _cb, text, _st in CUSTOM_PRESETS:
+        b.button(text=text[:64], callback_data=f"{BCBTN}{preset_id}")
     b.adjust(2)
     b.row(InlineKeyboardButton(text="Кнопка-ссылка", callback_data=f"{BCACT}link"))
     b.row(
@@ -220,9 +225,9 @@ def _format_kb_spec_lines(spec: list) -> str:
 
 
 def _append_preset(spec: list, preset_id: str) -> None:
-    for cb_id, text, style in CUSTOM_PRESETS:
-        if cb_id == preset_id:
-            if preset_id == "ref_invite":
+    for pid, cb_id, text, style in CUSTOM_PRESETS:
+        if pid == preset_id:
+            if cb_id == "ref_invite":
                 spec.append(
                     {
                         "kind": "url",

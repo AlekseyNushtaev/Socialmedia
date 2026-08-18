@@ -7,6 +7,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, LabeledPrice, PreCheckoutQuery, Message
 from lexicon import lexicon
 from payments.process_payload import process_confirmed_payment
+from payments.tariff_gate import panel_days_from_tariff_key
 from wl_traffic.texts import format_pro_payment_link
 
 
@@ -16,7 +17,7 @@ router: Router = Router()
 def get_stars_amount(currency: str, duration: str) -> float:
     """Возвращает цену для тарифа в указанной криптовалюте"""
     prices = {
-        'Stars': {'7': 99, '30': 299, '90': 749, '180': 1349, '365': 2399, 'white_30': 499}
+        'Stars': {'7': 99, '30': 299, '90': 749, '180': 1349, '365': 2399, '5000': 4990, '5000sale': 2790, 'white_30': 499}
     }
     return prices.get(currency, {}).get(duration, 0)
 
@@ -40,11 +41,16 @@ async def process_payment_stars(callback: CallbackQuery):
     if 'old' in duration:
         duration = duration.replace('old', '')
 
+    panel_days = panel_days_from_tariff_key(duration)
+
     payload = f"user_id:{user_id},duration:{duration},white:{white_flag},gift:{gift_flag},method:stars,amount:{stars_amount}"
 
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]
-    title = f"Оплата подписки {'в подарок другу ' if gift_flag else ''}на {duration} дней."
-    description = lexicon['payment_link_white'] if white_flag else format_pro_payment_link(int(duration))
+    dur_label = duration
+    if duration in ("5000", "5000sale"):
+        dur_label = "Навсегда"
+    title = f"Оплата подписки {'в подарок другу ' if gift_flag else ''}на {dur_label} дней."
+    description = lexicon['payment_link_white'] if white_flag else format_pro_payment_link(panel_days)
     await bot.send_invoice(
         callback.from_user.id,
         title=title,

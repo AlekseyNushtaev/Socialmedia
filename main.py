@@ -35,6 +35,7 @@ from logging_config import logger
 from sheduler.time_mes_not_sub import send_push_cron
 from sheduler.check_wl_traffic import check_wl_traffic_cron
 from sheduler.accumulate_wl_traffic import accumulate_wl_traffic_cron
+from sheduler.credit_forever_wl_monthly import credit_forever_wl_monthly_cron
 from wl_traffic.constants import WL_ACCUMULATE_HOUR, WL_ACCUMULATE_MINUTE
 from sheduler.backup_db import send_db_backup_cron
 from web_api import app as web_app
@@ -84,6 +85,16 @@ async def main() -> None:
         minute=WL_ACCUMULATE_MINUTE,
         id='wl_traffic_accumulate',
         misfire_grace_time=600,
+    )
+    scheduler.add_job(
+        credit_forever_wl_monthly_cron,
+        trigger='cron',
+        day=1,
+        hour=0,
+        minute=5,
+        args=[bot],
+        id='wl_forever_monthly',
+        misfire_grace_time=3600,
     )
     scheduler.add_job(check_connect, trigger='interval', minutes=14, misfire_grace_time=60)
     # scheduler.add_job(check_platega, trigger='interval', minutes=1, misfire_grace_time=10)

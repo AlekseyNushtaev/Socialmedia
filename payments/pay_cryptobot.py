@@ -10,6 +10,7 @@ from keyboard import create_kb, BTN_BACK
 from lexicon import lexicon, dct_price, dct_desc
 from logging_config import logger
 from payments.payment_limits import payment_creation_allowed
+from payments.tariff_gate import panel_days_from_tariff_key
 from wl_traffic.texts import format_pro_payment_link
 
 
@@ -164,6 +165,8 @@ async def process_payment_crypto(callback: CallbackQuery):
     else:
         duration = duration_key
 
+    panel_days = panel_days_from_tariff_key(duration)
+
     if callback.from_user.id in ADMIN_IDS:
         rub_amount = 1
 
@@ -182,7 +185,9 @@ async def process_payment_crypto(callback: CallbackQuery):
     )
 
     if result['status'] == 'pending':
-        text = lexicon['payment_link_white'] if white_flag else format_pro_payment_link(int(duration))
+        text = lexicon['payment_link_white'] if white_flag else format_pro_payment_link(
+            panel_days_from_tariff_key(duration)
+        )
         if gift_flag:
             text += '\n\nДля оплаты <b>подарочной подписки</b> перейдите по ссылке:'
         else:

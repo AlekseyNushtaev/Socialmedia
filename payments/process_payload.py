@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
+from config_bd.utils import _payload_duration_to_panel_days
 from bot import x3, sql, bot
 from X3 import panel_username_for_site_user
 
@@ -137,7 +138,11 @@ async def process_confirmed_payment(payload) -> bool:
                 await sql.add_payment_stars(user_id, amount, False, payload)
             return await _process_traffic_topup(user_id, traffic_gb, method, amount)
 
-        duration = int(duration_raw)
+        duration_panel = _payload_duration_to_panel_days(duration_raw)
+        if duration_panel is None:
+            logger.error(f"❌ Некорректная длительность подписки в payload: {duration_raw!r}")
+            return False
+        duration = duration_panel
         white_flag = payload_parts.get('white', 'False') == 'True'
         is_gift = payload_parts.get('gift', 'False') == 'True'
         method = payload_parts.get('method', '')

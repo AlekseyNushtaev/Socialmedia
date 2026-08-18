@@ -27,7 +27,12 @@ from aiogram.types import (
 )
 from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, Command
 from lexicon import lexicon
+from payments.tariff_gate import panel_days_from_tariff_key, tariff_key_from_callback
 from wl_traffic.texts import format_pro_payment_link
+
+TARIFF_CALLBACKS = frozenset({
+    'r_7', 'r_30', 'r_90', 'r_180', 'r_365', 'r_white_30', 'r_5000', 'r_5000sale',
+})
 from wl_traffic.service import credit_wl_subscription_bonus
 
 
@@ -361,15 +366,10 @@ async def trial_return_get_cb(callback: CallbackQuery):
 
 
 def _duration_days_from_tariff_cb(data: str) -> int:
-    key = data.replace("gift_r_", "").replace("r_", "")
-    if "white" in key:
-        key = key.replace("white_", "")
-    if "old" in key:
-        key = key.replace("old", "")
-    return int(key)
+    return panel_days_from_tariff_key(tariff_key_from_callback(data))
 
 
-@router.callback_query(F.data.in_({'r_7', 'r_30', 'r_90', 'r_180', 'r_365', 'r_white_30'}))
+@router.callback_query(F.data.in_(TARIFF_CALLBACKS))
 async def process_payment_method(callback: CallbackQuery):
     await callback.answer()
     if 'white' in callback.data:

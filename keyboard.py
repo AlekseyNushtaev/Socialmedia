@@ -145,6 +145,7 @@ _STYLES_TARIFF = {
     "r_90": STYLE_SUCCESS,
     "r_180": STYLE_SUCCESS,
     "r_365": STYLE_SUCCESS,
+    "r_5000": STYLE_SUCCESS,
     "r_white_30": STYLE_PRIMARY,
     "r_30old": STYLE_PRIMARY,
     "free_vpn": STYLE_SUCCESS,
@@ -159,6 +160,7 @@ def _tariff_keyboard_kwargs(*, with_trial: bool) -> dict[str, str]:
         "r_90": "✅ 90 дней - 749 руб (выгода -16%)",
         "r_180": "🏆 180 дней - 1349 руб (выгода -25%)",
         "r_365": "💎 365 дней - 2399 руб (выгода -33%)",
+        "r_5000": "♾️ Навсегда — 4990 руб",
         WL_TRAFFIC_BUY_SUB_CB: "📦 Купить трафик",
         "back_to_main": BTN_BACK,
     }

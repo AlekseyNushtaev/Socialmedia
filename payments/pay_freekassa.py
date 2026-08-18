@@ -23,6 +23,7 @@ from lexicon import dct_price, dct_desc, lexicon
 from logging_config import logger
 from payments.payment_limits import payment_creation_allowed
 from payments.payload_source import BOT, SITE
+from payments.tariff_gate import panel_days_from_tariff_key
 from wl_traffic.texts import format_pro_payment_link
 
 router = Router()
@@ -379,6 +380,8 @@ async def _handle_wata_style_callback(callback: CallbackQuery, ui_kind: UiKind) 
     if "old" in duration:
         duration = duration.replace("old", "")
 
+    panel_days = panel_days_from_tariff_key(duration)
+
     if gift_flag:
         payment_info = await pay_for_gift(
             val=str(rub_amount),
@@ -403,7 +406,7 @@ async def _handle_wata_style_callback(callback: CallbackQuery, ui_kind: UiKind) 
 
     if payment_info["status"] == "pending":
         try:
-            text = format_pro_payment_link(int(duration))
+            text = format_pro_payment_link(panel_days)
             if white_flag:
                 text = lexicon["payment_link_white"]
             if gift_flag:
