@@ -68,23 +68,6 @@ def chanel_keyboard():
     return keyboard
 
 
-def _document_link_rows() -> list[list[InlineKeyboardButton]]:
-    return [
-        [
-            InlineKeyboardButton(
-                text="Политика конфиденциальности",
-                url=DOCUMENT_URL_2,
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="Пользовательское соглашение",
-                url=DOCUMENT_URL_1,
-            )
-        ],
-    ]
-
-
 def keyboard_start_bonus():
     markup = create_kb(
         1,
@@ -93,7 +76,6 @@ def keyboard_start_bonus():
         buy_vpn="💰 Купить подписку",
     )
     rows = list(markup.inline_keyboard)
-    rows.extend(_document_link_rows())
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -135,7 +117,6 @@ def keyboard_start():
             )
         ]
     )
-    rows.extend(_document_link_rows())
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
