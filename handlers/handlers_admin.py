@@ -1,20 +1,27 @@
 import random
-from datetime import datetime, timezone, timedelta
+import os
+import tempfile
+from datetime import datetime, date, timezone, timedelta
 from typing import Optional
 
+import openpyxl
+from openpyxl.styles import Alignment, Border, Side, PatternFill
+
 from bot import sql, x3, bot
-from config import ADMIN_IDS, CHECKER_ID
+from config import ADMIN_IDS, CHECKER_ID, API_FREEKASSA, SHOP_ID_FREEKASSA
 from lexicon import lexicon
 from keyboard import create_kb, STYLE_PRIMARY, STYLE_SUCCESS, STYLE_DANGER, keyboard_sub_after_buy, BTN_BACK
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.filters import Command, StateFilter
 
 from handlers.handlers_broadcast import BroadcastState
 
 from sheduler.check_connect import check_connect
+from sheduler.check_fk import fetch_fk_payment_check_status
+from payments.pay_freekassa import FreekassaPayment
 from telegram_ids import is_telegram_chat_id
 from X3 import panel_username_for_site_user
 from wl_traffic.service import (
@@ -27,6 +34,18 @@ from wl_traffic.service import (
 )
 
 router = Router()
+
+_EXCEL_COL_WIDTH_MAX = 255
+
+
+def _parse_check_fk_date(raw: str) -> Optional[date]:
+    for fmt in ("%d.%m.%y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(raw.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
 
 _ADD7ALL_PREVIEW_CB = "add7all_preview"
 _ADD7ALL_YES_CB = "add7all_yes"
@@ -264,11 +283,15 @@ async def pay_info_command(message: Message):
         await message.answer(f"❌ Пользователь {target_id} не найден в базе данных.")
         return
 
-    reg_un, _ = _panel_usernames_from_row(user_row)
+    reg_un, white_un = _panel_usernames_from_row(user_row)
     sub_db = user_row[9]
+    white_db = user_row[10]
 
     try:
-        ar_reg = await x3.activ(reg_un)
+        ar_reg, ar_white = await asyncio.gather(
+            x3.activ(reg_un),
+            x3.activ(white_un),
+        )
     except Exception as e:
         logger.exception("/pay: панель")
         await message.answer(f"❌ Ошибка запроса к панели: {e}")
@@ -276,20 +299,24 @@ async def pay_info_command(message: Message):
 
     pay_rows = await sql.get_user_subscription_payment_report(target_id)
     pay_lines: list[str] = []
-    for tc, kind, days_s in pay_rows:
+    for tc, kind, method, detail in pay_rows:
         ts = _pay_dt_str(tc)
-        pay_lines.append(f"• {ts} — {kind} — {days_s} дн.")
+        pay_lines.append(f"• {ts} — {kind} — {method} — {detail}")
 
     trafic_wl, limit_wl = await sql.get_wl_limits(target_id)
     used_wl_gb = await get_wl_used_gb_for_user(x3, target_id, trafic_wl)
+    remaining_wl = max(0.0, round(limit_wl - used_wl_gb, 2))
 
     body = (
         f"<b>/pay {target_id}</b>\n\n"
-        f"Подписка в БД бота — {_pay_dt_str(sub_db)}\n"
-        f"Подписка в панели — {_pay_panel_sub_line(ar_reg)}\n\n"
+        f"Подписка обычная в БД бота — {_pay_dt_str(sub_db)}\n"
+        f"Подписка обычная в панели — {_pay_panel_sub_line(ar_reg)}\n"
+        f"Подписка вайт в БД бота — {_pay_dt_str(white_db)}\n"
+        f"Подписка вайт в панели — {_pay_panel_sub_line(ar_white)}\n\n"
         f"📡 <b>Дополнительный сервер (WL-трафик)</b>\n"
         f"├ Лимит: <b>{limit_wl:.2f} GB</b>\n"
-        f"└ Использовано: <b>{used_wl_gb:.2f} GB</b>\n\n"
+        f"├ Использовано: <b>{used_wl_gb:.2f} GB</b>\n"
+        f"└ Осталось: <b>{remaining_wl:.2f} GB</b>\n\n"
         f"<b>Платежи:</b>\n"
     )
     if pay_lines:
@@ -913,6 +940,122 @@ async def check_users_command(message: Message):
     except Exception as e:
         logger.exception("Ошибка в /check_users")
         await message.answer(f"❌ Ошибка: {str(e)}")
+
+
+@router.message(Command(commands=['check_fk']))
+async def check_fk_command(message: Message):
+    """Проверка платежей FreeKassa за указанный день через API; выгрузка в Excel."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "❌ Использование: /check_fk DD.MM.YY\n"
+            "Пример: /check_fk 01.08.25"
+        )
+        return
+
+    day = _parse_check_fk_date(args[1])
+    if day is None:
+        await message.answer(f"❌ Неверный формат даты: {args[1]}\nОжидается DD.MM.YY или DD.MM.YYYY")
+        return
+
+    if not API_FREEKASSA or SHOP_ID_FREEKASSA is None:
+        await message.answer("❌ FreeKassa API не настроен (API_FREEKASSA / SHOP_ID_FREEKASSA).")
+        return
+
+    await message.answer(
+        f"🔄 Проверяю платежи FreeKassa за {day.strftime('%d.%m.%Y')} через API..."
+    )
+
+    export_path = None
+    try:
+        payments = await sql.get_fk_sbp_payments_for_date(day)
+        if not payments:
+            await message.answer(f"ℹ️ Платежей FreeKassa за {day.strftime('%d.%m.%Y')} не найдено.")
+            return
+
+        fk = FreekassaPayment(API_FREEKASSA, SHOP_ID_FREEKASSA)
+        checked: list[tuple] = []
+        for i, pay in enumerate(payments, 1):
+            status_check = await fetch_fk_payment_check_status(pay, fk)
+            checked.append((pay, status_check))
+            if i % 10 == 0:
+                await message.answer(f"⏳ Проверено {i}/{len(payments)}...")
+
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin'),
+        )
+        light_red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+        fk_columns = [
+            "ID", "User ID", "Amount", "Time Created", "Is Gift", "Status",
+            "Status_check", "Transaction_Id", "FK_Order_Id", "Nonce", "Signature", "Method", "Payload",
+        ]
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "payments_fk_sbp"
+        for col_num, title in enumerate(fk_columns, 1):
+            cell = ws.cell(row=1, column=col_num, value=title)
+            cell.alignment = header_alignment
+            cell.border = thin_border
+
+        for row_num, (pay, status_check) in enumerate(checked, 2):
+            row_data = [
+                pay.id, pay.user_id, pay.amount, pay.time_created,
+                pay.is_gift, pay.status, status_check, pay.transaction_id, pay.fk_order_id,
+                pay.nonce, pay.signature, pay.method, pay.payload,
+            ]
+            mismatch_row = pay.status != status_check
+            for col_num, value in enumerate(row_data, 1):
+                if col_num == 4 and value and isinstance(value, datetime):
+                    value = value.strftime('%Y-%m-%d %H:%M:%S')
+                cell = ws.cell(row=row_num, column=col_num, value=value)
+                cell.border = thin_border
+                if mismatch_row:
+                    cell.fill = light_red_fill
+
+        for col in ws.columns:
+            max_len = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                if cell.value:
+                    max_len = max(max_len, len(str(cell.value)))
+            ws.column_dimensions[col_letter].width = min(max_len + 2, _EXCEL_COL_WIDTH_MAX)
+
+        export_path = tempfile.mktemp(suffix='.xlsx')
+        wb.save(export_path)
+
+        mismatch = sum(1 for pay, sc in checked if pay.status != sc)
+        confirmed_api = sum(1 for _, sc in checked if sc == "confirmed")
+        caption = (
+            f"📊 Проверка FreeKassa за {day.strftime('%d.%m.%Y')}\n"
+            f"📅 Создано: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+            f"Всего платежей: {len(checked)}\n"
+            f"Подтверждено по API: {confirmed_api}\n"
+            f"Расхождение Status ≠ Status_check: {mismatch}"
+        )
+        await message.answer_document(
+            document=FSInputFile(export_path, filename=f"check_fk_{day.strftime('%d.%m.%y')}.xlsx"),
+            caption=caption,
+        )
+        logger.info(
+            f"Админ {message.from_user.id} выполнил /check_fk {args[1]}: "
+            f"{len(checked)} платежей, расхождений {mismatch}"
+        )
+
+    except Exception as e:
+        logger.exception("Ошибка в /check_fk")
+        await message.answer(f"❌ Ошибка: {str(e)}")
+    finally:
+        if export_path:
+            try:
+                os.remove(export_path)
+            except OSError:
+                pass
 
 
 @router.message(Command(commands=['send_gift']))
