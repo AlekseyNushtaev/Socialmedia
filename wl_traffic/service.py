@@ -136,8 +136,11 @@ def billing_uid_from_panel_username(username: str) -> Optional[int]:
     try:
         return int(username)
     except ValueError:
-        if username.startswith("n") and username[1:].isdigit():
-            return int(username[1:])
+        if username.startswith("n"):
+            try:
+                return int(username[1:])
+            except ValueError:
+                return None
         return None
 
 
