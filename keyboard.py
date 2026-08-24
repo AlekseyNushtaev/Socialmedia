@@ -6,7 +6,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CHANEL_URL, BOT_URL, DOCUMENT_URL_1, DOCUMENT_URL_2
 from lexicon import dct_price_discount_33
-from wl_traffic.constants import BUY_VPN_CB, PROFILE_CB, WL_TRAFFIC_BUY_CB, WL_TRAFFIC_BUY_SUB_CB
+from wl_traffic.constants import (
+    BUY_VPN_CB,
+    PROFILE_CB,
+    WL_TRAFFIC_BUY_CB,
+    WL_TRAFFIC_BUY_SUB_CB,
+    WL_TRAFFIC_TARIFFS,
+)
 
 # Единый текст «Назад» для импорта из других модулей
 BTN_BACK = "🔙 Назад"
@@ -142,7 +148,7 @@ def _tariff_keyboard_kwargs(*, with_trial: bool) -> dict[str, str]:
         "r_180": "🏆 180 дней - 1349 руб (выгода -25%)",
         "r_365": "💎 365 дней - 2399 руб (выгода -33%)",
         "r_5000": "♾️ Навсегда — 4990 руб",
-        WL_TRAFFIC_BUY_SUB_CB: "📦 Купить трафик",
+        WL_TRAFFIC_BUY_SUB_CB: "📦 Купить трафик Антиглушилка",
         "back_to_main": BTN_BACK,
     }
     if with_trial:
@@ -723,23 +729,15 @@ def keyboard_profile() -> InlineKeyboardMarkup:
 
 
 def keyboard_wl_traffic_tariffs(*, back_callback: str = "back_to_main") -> InlineKeyboardMarkup:
-    labels = {
-        "10": "10 GB — 50 ₽",
-        "20": "20 GB — 79 ₽",
-        "50": "50 GB — 149 ₽",
-        "100": "100 GB — 259 ₽",
-        "250": "250 GB — 629 ₽",
-        "500": "500 GB — 1249 ₽",
-    }
     from_sub = back_callback == BUY_VPN_CB
     buttons = []
-    for mb, label in labels.items():
-        cb = f"wl_traffic_sub_{mb}" if from_sub else f"wl_traffic_{mb}"
+    for gb, price in sorted(WL_TRAFFIC_TARIFFS.items(), key=lambda item: int(item[0]), reverse=True):
+        cb = f"wl_traffic_sub_{gb}" if from_sub else f"wl_traffic_{gb}"
         buttons.append([
             InlineKeyboardButton(
-                text=label,
+                text=f"{gb} GB — {price} ₽",
                 callback_data=cb,
-                style=STYLE_SUCCESS if mb in ("50", "100", "250", "500") else STYLE_PRIMARY,
+                style=STYLE_SUCCESS if gb in ("50", "100", "250", "500") else STYLE_PRIMARY,
             )
         ])
     buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data=back_callback)])

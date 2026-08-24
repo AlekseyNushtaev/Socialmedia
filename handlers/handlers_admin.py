@@ -313,7 +313,7 @@ async def pay_info_command(message: Message):
         f"Подписка обычная в панели — {_pay_panel_sub_line(ar_reg)}\n"
         f"Подписка вайт в БД бота — {_pay_dt_str(white_db)}\n"
         f"Подписка вайт в панели — {_pay_panel_sub_line(ar_white)}\n\n"
-        f"📡 <b>Дополнительный сервер (WL-трафик)</b>\n"
+        f"📡 <b>Антиглушилка (WL-трафик)</b>\n"
         f"├ Лимит: <b>{limit_wl:.2f} GB</b>\n"
         f"├ Использовано: <b>{used_wl_gb:.2f} GB</b>\n"
         f"└ Осталось: <b>{remaining_wl:.2f} GB</b>\n\n"
@@ -1332,7 +1332,7 @@ async def add_traffic_command(message: Message):
             and not field_bool_2
         ):
             if await reassign_to_active_squad(x3, panel_user):
-                squad_note = "\n✅ Squad → active (Дополнительный сервер)"
+                squad_note = "\n✅ Squad → active (Антиглушилка)"
             else:
                 squad_note = "\n⚠️ Не удалось переназначить squad в панели"
 
