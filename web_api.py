@@ -54,6 +54,7 @@ from payments.payload_source import SITE, SUBPAGE
 from payments.pay_cryptobot import create_cryptobot_payment
 from payments.pay_freekassa import pay_site
 from payments.pay_stars import get_stars_amount
+from payments.tariff_gate import tariff_period_label
 import aiohttp
 
 
@@ -185,10 +186,10 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 TARIFF_PUBLIC = [
     ("7", "7 дней", 5, False),
-    ("30", "30 дней", 5, False),
-    ("90", "90 дней", 5, False),
-    ("180", "180 дней", 5, False),
-    ("365", "365 дней", 5, False),
+    ("30", "1 месяц", 5, False),
+    ("90", "3 месяца", 5, False),
+    ("180", "6 месяцев", 5, False),
+    ("365", "1 год", 5, False),
     # ("white_30", "Mobile 30 дней", 1, False),
 ]
 
@@ -1113,7 +1114,7 @@ async def sub_page_pay_stars(body: SubPagePayIn, request: Request, _: SubPageAut
         f"method:stars,amount:{stars_amount},source:{SUB_PAGE_PAYLOAD_SOURCE}"
     )
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]
-    title = f"Оплата подписки на {duration_str} дней."
+    title = f"Оплата подписки на {tariff_period_label(duration_str)}."
     description = lexicon["payment_link_white"] if white else format_pro_payment_link(int(duration_str))
 
     try:
@@ -1292,16 +1293,6 @@ async def gift_activate(ctx: JwtCtx, gift_id: str):
     }
 
 
-def _gift_duration_label(days: int) -> str:
-    if days >= 5000:
-        return "Навсегда"
-    if days == 1:
-        return "1 день"
-    if 2 <= days % 100 <= 4 and not (12 <= days % 100 <= 14):
-        return f"{days} дня"
-    return f"{days} дней"
-
-
 @app.post("/api/gifts/{gift_id}/activate-web")
 async def gift_activate_web(gift_id: str):
     """
@@ -1352,7 +1343,7 @@ async def gift_activate_web(gift_id: str):
         "status": "success",
         "subscription_url": subscription_url,
         "duration_days": duration,
-        "duration_label": _gift_duration_label(duration),
+        "duration_label": tariff_period_label(duration),
         "devices": devices,
         "expires": subscription_time,
         "cabinet_url": subscription_url,

@@ -11,6 +11,7 @@ import aiohttp
 from config import PANEL_API_TOKEN, PANEL_URL, TRUE_SUB_LINK, MIRROR_SUB_LINK, SHORT_UUID_SECRET
 from config_bd.utils import AsyncSQL
 from logging_config import logger
+from payments.tariff_gate import add_tariff_period, tariff_period_label
 import random
 import string
 
@@ -161,7 +162,7 @@ class X3:
             panel_username = panel_username_for_site_user(db_user_id, is_white)
             client_id = self.generate_site_short_uuid(email_key, is_white, db_user_id)
             current_time = datetime.datetime.now(datetime.timezone.utc)
-            expire_time = current_time + datetime.timedelta(days=day)
+            expire_time = add_tariff_period(current_time, day)
             vless_uuid = str(uuid.uuid1())
 
             if is_white:
@@ -273,7 +274,7 @@ class X3:
             if 'white' in user_id_str:
                 client_id = self.generate_client_id(user_id * 100)
             current_time = datetime.datetime.now(datetime.timezone.utc)
-            expire_time = current_time + datetime.timedelta(days=day)
+            expire_time = add_tariff_period(current_time, day)
             vless_uuid = str(uuid.uuid1())
 
             if 'white' in user_id_str:
@@ -435,7 +436,7 @@ class X3:
             return False
 
     async def updateClient(self, day, user_id_str, user_id):
-        """Обновляет клиента - добавляет дни к подписке"""
+        """Обновляет клиента — добавляет период тарифа к подписке"""
         try:
             # Получаем данные пользователя
             user_response = await self.get_user_by_username(user_id_str)
@@ -459,17 +460,18 @@ class X3:
             current_expire_at = datetime.datetime.fromisoformat(expire_at_str.replace('Z', '+00:00'))
             now = datetime.datetime.now(datetime.timezone.utc)
 
+            period = tariff_period_label(day)
             # Определяем новую дату истечения
             if current_expire_at < now:
                 # Подписка истекла - начинаем с текущего момента
-                new_expire_at = now + datetime.timedelta(days=day)
+                new_expire_at = add_tariff_period(now, day)
                 status = 'ACTIVE'  # Активируем подписку
-                logger.info(f"Подписка пользователя {user_id_str} истекла. Активируем и добавляем {day} дней")
+                logger.info(f"Подписка пользователя {user_id_str} истекла. Активируем и добавляем {period}")
             else:
                 # Подписка активна - добавляем к существующей дате
-                new_expire_at = current_expire_at + datetime.timedelta(days=day)
+                new_expire_at = add_tariff_period(current_expire_at, day)
                 status = user.get('status', 'ACTIVE')
-                logger.info(f"Подписка пользователя {user_id_str} активна. Добавляем {day} дней")
+                logger.info(f"Подписка пользователя {user_id_str} активна. Добавляем {period}")
 
             # Обрабатываем activeInternalSquads
             raw_squads = user.get('activeInternalSquads', [])
@@ -493,7 +495,7 @@ class X3:
             logger.info(f"Обновление пользователя {user_id_str}:")
             logger.info(f"  Старая дата: {current_expire_at.strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"  Новая дата: {new_expire_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            logger.info(f"  Добавлено дней: {day}")
+            logger.info(f"  Добавлено: {period}")
 
             session = await self._get_session()
             async with session.patch(

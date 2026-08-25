@@ -11,7 +11,7 @@ import argparse
 import asyncio
 import sqlite3
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -85,7 +85,9 @@ def _days_for_amount(amount: int) -> Tuple[Optional[int], bool]:
 def _extend_end_date(
     current: Optional[datetime], days: int, now: datetime
 ) -> datetime:
-    anchor = now + timedelta(days=days)
+    from payments.tariff_gate import add_tariff_period
+
+    anchor = add_tariff_period(now, days)
     result = _sum_subscription_end_dates(current, anchor, now)
     return result if result is not None else anchor
 

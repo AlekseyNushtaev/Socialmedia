@@ -7,7 +7,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, LabeledPrice, PreCheckoutQuery, Message
 from lexicon import lexicon
 from payments.process_payload import process_confirmed_payment
-from payments.tariff_gate import panel_days_from_tariff_key
+from payments.tariff_gate import panel_days_from_tariff_key, tariff_period_label
 from wl_traffic.texts import format_pro_payment_link
 
 
@@ -46,10 +46,8 @@ async def process_payment_stars(callback: CallbackQuery):
     payload = f"user_id:{user_id},duration:{duration},white:{white_flag},gift:{gift_flag},method:stars,amount:{stars_amount}"
 
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]
-    dur_label = duration
-    if duration in ("5000", "5000sale"):
-        dur_label = "Навсегда"
-    title = f"Оплата подписки {'в подарок другу ' if gift_flag else ''}на {dur_label} дней."
+    dur_label = tariff_period_label(duration)
+    title = f"Оплата подписки {'в подарок другу ' if gift_flag else ''}на {dur_label}."
     description = lexicon['payment_link_white'] if white_flag else format_pro_payment_link(panel_days)
     await bot.send_invoice(
         callback.from_user.id,

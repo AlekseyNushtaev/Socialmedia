@@ -27,7 +27,7 @@ from aiogram.types import (
 )
 from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, Command
 from lexicon import lexicon
-from payments.tariff_gate import panel_days_from_tariff_key, tariff_key_from_callback
+from payments.tariff_gate import panel_days_from_tariff_key, tariff_key_from_callback, tariff_period_label
 from wl_traffic.texts import format_pro_payment_link
 
 TARIFF_CALLBACKS = frozenset({
@@ -611,7 +611,7 @@ async def activate_gift(message: Message, gift_id: str):
                 f'Юзер {message.from_user.id} - {message.from_user.username} зашел в бота в первый раз и получил подарочную подписку')
 
         # Отправляем сообщение получателю
-        await message.answer(lexicon['gift_yes'].format(duration, subscription_time))
+        await message.answer(lexicon['gift_yes'].format(tariff_period_label(duration), subscription_time))
         return True
 
     else:

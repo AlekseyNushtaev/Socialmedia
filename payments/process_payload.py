@@ -10,6 +10,7 @@ from lead_tracker import post_payment_success
 from keyboard import create_kb, keyboard_sub_after_buy, BTN_BACK
 from lexicon import lexicon
 from logging_config import logger
+from payments.tariff_gate import tariff_period_label
 from wl_traffic.service import (
     fetch_panel_user,
     get_wl_used_gb_for_user,
@@ -176,7 +177,7 @@ async def process_confirmed_payment(payload) -> bool:
 
             # Отправляем сообщение с ссылкой на подарок
             marker = ' — 📱 мобильный тариф' if white_flag else ''
-            gift_message = lexicon['payment_gift'].format(duration, marker, gift_id)
+            gift_message = lexicon['payment_gift'].format(tariff_period_label(duration), marker, gift_id)
 
             try:
                 await bot.send_message(
@@ -219,10 +220,10 @@ async def process_confirmed_payment(payload) -> bool:
             existing_user = await x3.get_user_by_username(user_id_str)
 
             if existing_user and 'response' in existing_user and existing_user['response']:
-                logger.info(f"⏫ Обновляем {user_id_str} на {duration} дней")
+                logger.info(f"⏫ Обновляем {user_id_str} на {tariff_period_label(duration)}")
                 response = await x3.updateClient(duration, user_id_str, user_id)
             else:
-                logger.info(f"➕ Добавляем {user_id_str} на {duration} дней")
+                logger.info(f"➕ Добавляем {user_id_str} на {tariff_period_label(duration)}")
                 response = await x3.addClient(duration, user_id_str, user_id)
 
             if not response:
@@ -318,7 +319,9 @@ async def process_confirmed_payment(payload) -> bool:
             try:
                 sub_link = await x3.sublink(user_id_str)
                 marker = 'продлена' if existing_user else 'активирована'
-                message_text = lexicon['payment_success'].format(marker, subscription_time, amount, currency, duration, sub_link)
+                message_text = lexicon['payment_success'].format(
+                    marker, subscription_time, amount, currency, tariff_period_label(duration), sub_link
+                )
 
                 await bot.send_message(
                     chat_id=user_id,

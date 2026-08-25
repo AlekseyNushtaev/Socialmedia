@@ -28,6 +28,7 @@ from logging_config import logger
 from payments.pay_cryptobot import create_cryptobot_payment
 from payments.pay_freekassa import pay
 from payments.payload_source import BOT
+from payments.tariff_gate import tariff_period_label
 from telegram_ids import is_telegram_chat_id
 from wl_traffic.texts import format_pro_payment_link
 
@@ -272,7 +273,7 @@ async def discount_push_pay_stars(callback: CallbackQuery):
         f"method:stars,amount:{stars_amount},source:{BOT}{_DISCOUNT_PAYLOAD_SUFFIX}"
     )
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]
-    title = f"Оплата подписки на {duration} дней (скидка 33%)."
+    title = f"Оплата подписки на {tariff_period_label(duration)} (скидка 33%)."
 
     try:
         await callback.message.delete()

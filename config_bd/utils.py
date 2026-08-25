@@ -2303,7 +2303,7 @@ class AsyncSQL:
     ) -> List[Tuple[datetime, str, str, str]]:
         """
         Успешные платежи пользователя (confirmed/paid) по всем таблицам оплат.
-        Возвращает список (time_created, тип, способ оплаты, детали: «N дн.» или «N GB»).
+        Возвращает список (time_created, тип, способ оплаты, детали: период тарифа или «N GB»).
         """
         rows_acc: List[Tuple[datetime, str, str, str]] = []
 
@@ -2321,6 +2321,8 @@ class AsyncSQL:
         def _row_report_fields(
             payload: Optional[str], is_gift: bool, amount: Any
         ) -> Tuple[str, str, str]:
+            from payments.tariff_gate import tariff_period_label
+
             m = _parse_map(payload)
             method = _payment_method_label(m.get("method"))
             raw_duration = m.get("duration")
@@ -2352,7 +2354,7 @@ class AsyncSQL:
             else:
                 label = "Обычная"
 
-            days_s = f"{dur} дн." if dur is not None else "—"
+            days_s = tariff_period_label(dur) if dur is not None else "—"
             return label, method, days_s
 
         async with self.session_factory() as session:
