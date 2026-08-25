@@ -44,7 +44,6 @@ from web_api import app as web_app
 async def set_commands(bot: Bot):
     commands = [
         BotCommand(command='/start', description='Запустить бота'),
-        BotCommand(command='/sub', description='Отменить автоплатёж СБП'),
     ]
     await bot.set_my_commands(commands)
 
