@@ -2457,6 +2457,10 @@ class AsyncSQL:
     _PLATEGA_AUTOPAY_ACTIVE = ('pending', 'active', 'past_due')
 
     async def get_active_platega_autopay(self, user_id: int) -> Optional[PlategaAutopaySubscription]:
+        rows = await self.list_active_platega_autopays(user_id)
+        return rows[0] if rows else None
+
+    async def list_active_platega_autopays(self, user_id: int) -> List[PlategaAutopaySubscription]:
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(PlategaAutopaySubscription)
@@ -2465,9 +2469,17 @@ class AsyncSQL:
                     PlategaAutopaySubscription.status.in_(self._PLATEGA_AUTOPAY_ACTIVE),
                 )
                 .order_by(PlategaAutopaySubscription.id.desc())
-                .limit(1)
             )
-            return (await session.execute(stmt)).scalar_one_or_none()
+            return list((await session.execute(stmt)).scalars().all())
+
+    async def platega_recurent_has_confirmed(self, subscription_id: str) -> bool:
+        async with AsyncSessionLocal() as session:
+            stmt = select(PlategaRecurent.id).where(
+                PlategaRecurent.subscription_id == subscription_id,
+                PlategaRecurent.status == 'CONFIRMED',
+                PlategaRecurent.processed.is_(True),
+            ).limit(1)
+            return (await session.execute(stmt)).scalar_one_or_none() is not None
 
     async def get_platega_autopay_by_subscription_id(
         self, subscription_id: str

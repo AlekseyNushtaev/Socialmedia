@@ -163,33 +163,56 @@ class PlategaRecurrentClient:
                 return await response.json()
 
 
-async def cancel_user_autopay(user_id: int, reason: str = 'manual') -> bool:
-    """Отменяет активную автоподписку Platega у пользователя (идемпотентно)."""
-    row = await sql.get_active_platega_autopay(user_id)
-    if not row:
+async def _cancel_platega_autopay_row(row, reason: str) -> bool:
+    """Отмена одной автоподписки в Platega и БД."""
+    if row.status == 'cancelled':
         return False
     if PLATEGA_API_KEY and PLATEGA_MERCHANT_ID:
         try:
             client = PlategaRecurrentClient(PLATEGA_API_KEY, PLATEGA_MERCHANT_ID)
             await client.cancel_subscription(row.subscription_id)
         except Exception as e:
-            logger.error('Platega cancel_user_autopay user={} sub={}: {}', user_id, row.subscription_id, e)
+            logger.error(
+                'Platega cancel sub={} user={}: {}',
+                row.subscription_id, row.user_id, e,
+            )
     await sql.update_platega_autopay_status(row.subscription_id, 'cancelled', cancel_reason=reason)
-    logger.info('Autopay cancelled user={} sub={} reason={}', user_id, row.subscription_id, reason)
+    logger.info(
+        'Autopay cancelled user={} sub={} reason={}',
+        row.user_id, row.subscription_id, reason,
+    )
     reason_labels = {
         'user_command': 'команда /sub',
         'manual_payment': 'разовая оплата подписки',
-        'new_recurrent': 'новый автоплатёж',
+        'new_recurrent': 'новый автоплатёж (первое списание)',
         'manual': 'вручную',
         'provider_cancelled': 'отмена у провайдера',
     }
     await _notify_checker(
         f'🔄 Автоплатёж СБП 🛑 отменён\n'
-        f'user_id: {user_id}\n'
+        f'user_id: {row.user_id}\n'
         f'Тариф: {tariff_period_label(row.duration)}\n'
         f'sub: {row.subscription_id}\n'
         f'Причина: {reason_labels.get(reason, reason)}'
     )
+    return True
+
+
+async def cancel_superseded_autopays(user_id: int, keep_subscription_id: str) -> None:
+    """Отменяет другие автоподписки пользователя после успешной активации новой."""
+    rows = await sql.list_active_platega_autopays(user_id)
+    for row in rows:
+        if row.subscription_id != keep_subscription_id:
+            await _cancel_platega_autopay_row(row, reason='new_recurrent')
+
+
+async def cancel_user_autopay(user_id: int, reason: str = 'manual') -> bool:
+    """Отменяет все активные/ожидающие автоподписки Platega у пользователя."""
+    rows = await sql.list_active_platega_autopays(user_id)
+    if not rows:
+        return False
+    for row in rows:
+        await _cancel_platega_autopay_row(row, reason=reason)
     return True
 
 
@@ -209,8 +232,6 @@ async def create_recurrent_payment(
         return {'status': 'error', 'url': '', 'id': ''}
     if not await payment_creation_allowed(user_id):
         return {'status': 'rate_limited', 'url': '', 'id': ''}
-
-    await cancel_user_autopay(user_id, reason='new_recurrent')
 
     interval = PLATEGA_INTERVAL_BY_DURATION.get(duration)
     if interval is None:
@@ -350,11 +371,14 @@ async def handle_subscription_charge_webhook(data: Dict[str, Any]) -> None:
         )
 
     if status_raw == 'CONFIRMED':
+        is_first_charge = not await sql.platega_recurent_has_confirmed(subscription_id)
         pay_payload = autopay.payload or str(payload_from_hook or '')
         if pay_payload:
             ok = await process_confirmed_payment(pay_payload)
             if ok:
                 await sql.mark_platega_recurent_processed(transaction_id)
+                if is_first_charge:
+                    await cancel_superseded_autopays(int(autopay.user_id), subscription_id)
                 logger.info(
                     'Platega recurrent charge applied user={} tx={} amount={}',
                     autopay.user_id, transaction_id, amount,
