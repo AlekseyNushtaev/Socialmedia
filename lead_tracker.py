@@ -30,6 +30,7 @@ _TRACKED_PAYMENT_METHODS = frozenset(
         "crypto",
         "fk_sbp",
         "fk_card",
+        "platega_rec",
     }
 )
 
