@@ -43,6 +43,9 @@ from config import (
     SMTP_USER,
     SUB_PAGE_API_KEY,
     TG_TOKEN,
+    PLATEGA_API_KEY,
+    PLATEGA_MERCHANT_ID,
+    WEB_API_PUBLIC_URL,
 )
 from keyboard import keyboard_payment_stars
 from lexicon import dct_desc, dct_price, lexicon
@@ -54,6 +57,14 @@ from payments.payload_source import SITE, SUBPAGE
 from payments.pay_cryptobot import create_cryptobot_payment
 from payments.pay_freekassa import pay_site
 from payments.pay_stars import get_stars_amount
+from payments.platega_recurrent import (
+    create_recurrent_payment,
+    handle_subscription_charge_webhook,
+    handle_subscription_status_webhook,
+    is_recurrent_tariff,
+    verify_platega_webhook_headers,
+    webhook_kind,
+)
 from payments.tariff_gate import tariff_period_label
 import aiohttp
 
@@ -252,6 +263,61 @@ def _tariff_parts(tariff_id: str) -> tuple[str, str, bool]:
     if "old" in d:
         d = d.replace("old", "")
     return desc_key, d, white
+
+
+async def _create_sbp_checkout(
+    *,
+    billing_user_id: int,
+    duration_str: str,
+    price: int,
+    description: str,
+    white: bool,
+    is_gift: bool,
+    source: str,
+    telegram_username: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    СБП для сайта и sub-page: тарифы 7/30/365 → рекуррент Platega (если настроена),
+    иначе разовый платёж FreeKassa. Остальные тарифы — только FreeKassa.
+    """
+    if (
+        not is_gift
+        and is_recurrent_tariff(duration_str)
+        and PLATEGA_API_KEY
+        and PLATEGA_MERCHANT_ID
+    ):
+        return await create_recurrent_payment(
+            user_id=billing_user_id,
+            duration=duration_str,
+            amount=int(price),
+            description=description,
+            white=white,
+            source=source,
+        )
+    if not API_FREEKASSA or SHOP_ID_FREEKASSA is None:
+        return {"status": "error", "url": "", "id": ""}
+    return await pay_site(
+        val=str(price),
+        des=description,
+        billing_user_id=billing_user_id,
+        duration=duration_str,
+        white=white,
+        is_gift=is_gift,
+        kind="sbp",
+        telegram_username=telegram_username,
+        payload_source=source,
+    )
+
+
+def _raise_payment_result_errors(result: dict[str, Any]) -> None:
+    if result.get("status") == "rate_limited":
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            lexicon["payment_too_many_pending"].format(PAYMENT_MAX_PENDING_PER_USER),
+        )
+    ok = result.get("status") in ("pending", "PENDING") and bool(result.get("url"))
+    if not ok:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Не удалось создать платёж")
 
 
 def _client_is_https(request: Request) -> bool:
@@ -988,14 +1054,32 @@ async def payments_create(ctx: JwtCtx, body: CreatePaymentIn):
     if site_test_price is not None:
         price = site_test_price
 
-    if body.method == "sbp" and (not API_FREEKASSA or SHOP_ID_FREEKASSA is None):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "FreeKassa is not configured")
-    if body.method == "card" and (not API_FREEKASSA or SHOP_ID_FREEKASSA is None):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "FreeKassa is not configured")
-
     description = (
         f"Подписка в подарок {dct_desc[desc_key]}" if body.is_gift else dct_desc[desc_key]
     )
+
+    if body.method == "sbp":
+        site_uname = ctx.get("username")
+        if not isinstance(site_uname, str):
+            site_uname = None
+        result = await _create_sbp_checkout(
+            billing_user_id=billing_user_id,
+            duration_str=duration_str,
+            price=int(price),
+            description=description,
+            white=white,
+            is_gift=body.is_gift,
+            source=SITE,
+            telegram_username=site_uname,
+        )
+        _raise_payment_result_errors(result)
+        return {
+            "payment_url": result.get("url") or "",
+            "payment_id": result.get("id") or "",
+        }
+
+    if body.method == "card" and (not API_FREEKASSA or SHOP_ID_FREEKASSA is None):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "FreeKassa is not configured")
 
     site_uname = ctx.get("username")
     if not isinstance(site_uname, str):
@@ -1030,32 +1114,22 @@ async def payments_create(ctx: JwtCtx, body: CreatePaymentIn):
 @app.post("/api/v1/sub_page/pay/fk_sbp")
 async def sub_page_pay_fk_sbp(body: SubPagePayIn, request: Request, _: SubPageAuth):
     _rate_limit_or_raise(_client_ip_for_rate_limit(request), "sub_page_fk_sbp", max_req=20, window=300)
-    if not API_FREEKASSA or SHOP_ID_FREEKASSA is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "FreeKassa не настроена")
 
     desc_key, duration_str, white = _tariff_parts(body.duration)
     price = dct_price[body.duration]
     if body.user_id in ADMIN_IDS:
         price = 1
 
-    result = await pay_site(
-        val=str(price),
-        des=dct_desc[desc_key],
+    result = await _create_sbp_checkout(
         billing_user_id=body.user_id,
-        duration=duration_str,
+        duration_str=duration_str,
+        price=int(price),
+        description=dct_desc[desc_key],
         white=white,
         is_gift=False,
-        kind="sbp",
-        telegram_username=None,
-        payload_source=SUB_PAGE_PAYLOAD_SOURCE,
+        source=SUB_PAGE_PAYLOAD_SOURCE,
     )
-    if result["status"] == "rate_limited":
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            lexicon["payment_too_many_pending"].format(PAYMENT_MAX_PENDING_PER_USER),
-        )
-    if result["status"] != "pending":
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Не удалось создать платёж FreeKassa (СБП)")
+    _raise_payment_result_errors(result)
 
     return {
         "payment_url": result.get("url") or "",
@@ -1238,6 +1312,49 @@ async def sub_page_wl_traffic(
         "limit_gb": limit_gb,
         "used_gb": used_gb,
         "remaining_gb": remaining_gb,
+    }
+
+
+@app.post("/api/webhooks/platega/recurrent")
+async def platega_recurrent_webhook(request: Request):
+    """Единый callback Platega для рекуррентных подписок (статус + списания)."""
+    headers = {k: v for k, v in request.headers.items()}
+    if not verify_platega_webhook_headers(headers):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid Platega webhook auth")
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid JSON")
+
+    if not isinstance(data, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid payload")
+
+    kind = webhook_kind(data)
+    try:
+        if kind == "status":
+            await handle_subscription_status_webhook(data)
+        elif kind == "charge":
+            await handle_subscription_charge_webhook(data)
+        else:
+            logger.warning("Platega recurrent webhook unknown kind: {}", data)
+    except Exception as e:
+        logger.error("Platega recurrent webhook error: {}", e)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Webhook processing error")
+
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/webhooks/platega/recurrent/info")
+async def platega_recurrent_webhook_info():
+    """Подсказка URL для личного кабинета Platega."""
+    base = WEB_API_PUBLIC_URL or "https://YOUR-WEB-API-HOST"
+    return {
+        "callback_url": f"{base}/api/webhooks/platega/recurrent",
+        "note": (
+            "Укажите этот URL в Platega → Настройки → Callback URLs "
+            "для webhook'ов рекуррентных подписок (списание и статус)."
+        ),
     }
 
 

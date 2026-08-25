@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple, Dict, Any
 
 from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, PaymentsCryptobot, PaymentsStars, Online, \
     WhiteCounter, PaymentsCards, PaymentsPlategaCrypto, PaymentsWataSBP, PaymentsWataCard, PaymentsFkSBP, \
-    LinkingCodes, PasswordResetCodes, WlTrafficMeta
+    LinkingCodes, PasswordResetCodes, WlTrafficMeta, PlategaAutopaySubscription, PlategaRecurent
 from lexicon import dct_price
 from logging_config import logger
 
@@ -2222,6 +2222,8 @@ class AsyncSQL:
             gifts_list = (await session.execute(select(Gifts))).scalars().all()
             online_list = (await session.execute(select(Online))).scalars().all()
             white_counter_list = (await session.execute(select(WhiteCounter))).scalars().all()
+            platega_autopay_list = (await session.execute(select(PlategaAutopaySubscription))).scalars().all()
+            platega_recurent_list = (await session.execute(select(PlategaRecurent))).scalars().all()
         return {
             "users": users_list,
             "payments": payments_list,
@@ -2235,6 +2237,8 @@ class AsyncSQL:
             "gifts": gifts_list,
             "online": online_list,
             "white_counter": white_counter_list,
+            "platega_autopay_subscriptions": platega_autopay_list,
+            "platega_recurent": platega_recurent_list,
         }
 
     async def add_white_counter_if_not_exists(self, user_id: int) -> None:
@@ -2447,3 +2451,128 @@ class AsyncSQL:
 
         rows_acc.sort(key=lambda x: (x[0], x[1]))
         return rows_acc
+
+    # ── Platega recurrent autopay ─────────────────────────────────────
+
+    _PLATEGA_AUTOPAY_ACTIVE = ('pending', 'active', 'past_due')
+
+    async def get_active_platega_autopay(self, user_id: int) -> Optional[PlategaAutopaySubscription]:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(PlategaAutopaySubscription)
+                .where(
+                    PlategaAutopaySubscription.user_id == user_id,
+                    PlategaAutopaySubscription.status.in_(self._PLATEGA_AUTOPAY_ACTIVE),
+                )
+                .order_by(PlategaAutopaySubscription.id.desc())
+                .limit(1)
+            )
+            return (await session.execute(stmt)).scalar_one_or_none()
+
+    async def get_platega_autopay_by_subscription_id(
+        self, subscription_id: str
+    ) -> Optional[PlategaAutopaySubscription]:
+        async with AsyncSessionLocal() as session:
+            stmt = select(PlategaAutopaySubscription).where(
+                PlategaAutopaySubscription.subscription_id == subscription_id
+            )
+            return (await session.execute(stmt)).scalar_one_or_none()
+
+    async def add_platega_autopay_pending(
+        self,
+        user_id: int,
+        subscription_id: str,
+        duration: str,
+        amount: int,
+        payload: str,
+        *,
+        white: bool = False,
+        source: Optional[str] = None,
+    ) -> None:
+        async with AsyncSessionLocal() as session:
+            row = PlategaAutopaySubscription(
+                user_id=user_id,
+                subscription_id=subscription_id,
+                duration=duration,
+                amount=amount,
+                status='pending',
+                payload=payload,
+                white=white,
+                source=source,
+            )
+            session.add(row)
+            await session.commit()
+            logger.success(
+                "Platega autopay pending: user_id={} subscription_id={} duration={}",
+                user_id, subscription_id, duration,
+            )
+
+    async def update_platega_autopay_status(
+        self,
+        subscription_id: str,
+        status: str,
+        *,
+        next_charge_at: Optional[datetime] = None,
+        cancel_reason: Optional[str] = None,
+    ) -> None:
+        async with AsyncSessionLocal() as session:
+            values: Dict[str, Any] = {'status': status}
+            if next_charge_at is not None:
+                values['next_charge_at'] = next_charge_at
+            if cancel_reason is not None:
+                values['cancel_reason'] = cancel_reason
+                values['time_cancelled'] = datetime.now()
+            stmt = (
+                update(PlategaAutopaySubscription)
+                .where(PlategaAutopaySubscription.subscription_id == subscription_id)
+                .values(**values)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+    async def add_platega_recurent_payment(
+        self,
+        user_id: int,
+        subscription_id: str,
+        transaction_id: str,
+        amount: int,
+        currency: str,
+        status: str,
+        payment_method: Optional[int],
+        payload: Optional[str],
+        next_charge_at: Optional[datetime],
+    ) -> Optional[PlategaRecurent]:
+        async with AsyncSessionLocal() as session:
+            existing = (
+                await session.execute(
+                    select(PlategaRecurent).where(PlategaRecurent.transaction_id == transaction_id)
+                )
+            ).scalar_one_or_none()
+            if existing:
+                return existing
+            row = PlategaRecurent(
+                user_id=user_id,
+                subscription_id=subscription_id,
+                transaction_id=transaction_id,
+                amount=amount,
+                currency=currency or 'RUB',
+                status=status,
+                payment_method=payment_method,
+                payload=payload,
+                next_charge_at=next_charge_at,
+                processed=False,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row
+
+    async def mark_platega_recurent_processed(self, transaction_id: str) -> None:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                update(PlategaRecurent)
+                .where(PlategaRecurent.transaction_id == transaction_id)
+                .values(processed=True)
+            )
+            await session.execute(stmt)
+            await session.commit()

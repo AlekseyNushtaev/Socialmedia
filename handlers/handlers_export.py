@@ -72,6 +72,8 @@ async def _export_database_to_excel_impl(message: Message, *, users_full_columns
             gifts_list = snapshot["gifts"]
             online_list = snapshot["online"]
             white_counter_list = snapshot["white_counter"]
+            platega_autopay_list = snapshot["platega_autopay_subscriptions"]
+            platega_recurent_list = snapshot["platega_recurent"]
 
             wb = openpyxl.Workbook()
             if 'Sheet' in wb.sheetnames:
@@ -400,10 +402,74 @@ async def _export_database_to_excel_impl(message: Message, *, users_full_columns
                     if cell.value:
                         max_len = max(max_len, len(str(cell.value)))
                 ws_white_counter.column_dimensions[col_letter].width = min(max_len + 2, 50)
-            
+
+            # --- Лист PLATEGA_AUTOPAY (рекуррентные подписки) ---
+            ws_platega_autopay = wb.create_sheet(title="platega_autopay")
+            autopay_columns = [
+                'ID', 'User ID', 'Subscription ID', 'Duration', 'Amount', 'Status',
+                'Next Charge At', 'Time Created', 'Time Cancelled', 'Cancel Reason',
+                'White', 'Source', 'Payload',
+            ]
+            for col_num, title in enumerate(autopay_columns, 1):
+                cell = ws_platega_autopay.cell(row=1, column=col_num, value=title)
+                cell.alignment = header_alignment
+                cell.border = thin_border
+
+            for row_num, row in enumerate(platega_autopay_list, 2):
+                row_data = [
+                    row.id, row.user_id, row.subscription_id, row.duration, row.amount,
+                    row.status, row.next_charge_at, row.time_created, row.time_cancelled,
+                    row.cancel_reason, row.white, row.source, row.payload,
+                ]
+                for col_num, value in enumerate(row_data, 1):
+                    if col_num in (7, 8, 9) and value and isinstance(value, datetime):
+                        value = value.strftime('%Y-%m-%d %H:%M:%S')
+                    cell = ws_platega_autopay.cell(row=row_num, column=col_num, value=value)
+                    cell.border = thin_border
+
+            for col in ws_platega_autopay.columns:
+                max_len = 0
+                col_letter = col[0].column_letter
+                for cell in col:
+                    if cell.value:
+                        max_len = max(max_len, len(str(cell.value)))
+                ws_platega_autopay.column_dimensions[col_letter].width = min(max_len + 2, 50)
+
+            # --- Лист PLATEGA_RECURENT (списания по рекуррентам) ---
+            ws_platega_recurent = wb.create_sheet(title="platega_recurent")
+            recurent_columns = [
+                'ID', 'User ID', 'Subscription ID', 'Transaction ID', 'Amount', 'Currency',
+                'Status', 'Payment Method', 'Next Charge At', 'Time Created', 'Processed', 'Payload',
+            ]
+            for col_num, title in enumerate(recurent_columns, 1):
+                cell = ws_platega_recurent.cell(row=1, column=col_num, value=title)
+                cell.alignment = header_alignment
+                cell.border = thin_border
+
+            for row_num, row in enumerate(platega_recurent_list, 2):
+                row_data = [
+                    row.id, row.user_id, row.subscription_id, row.transaction_id, row.amount,
+                    row.currency, row.status, row.payment_method, row.next_charge_at,
+                    row.time_created, row.processed, row.payload,
+                ]
+                for col_num, value in enumerate(row_data, 1):
+                    if col_num in (9, 10) and value and isinstance(value, datetime):
+                        value = value.strftime('%Y-%m-%d %H:%M:%S')
+                    cell = ws_platega_recurent.cell(row=row_num, column=col_num, value=value)
+                    cell.border = thin_border
+
+            for col in ws_platega_recurent.columns:
+                max_len = 0
+                col_letter = col[0].column_letter
+                for cell in col:
+                    if cell.value:
+                        max_len = max(max_len, len(str(cell.value)))
+                ws_platega_recurent.column_dimensions[col_letter].width = min(max_len + 2, 50)
+
             # Заморозка заголовков
             for ws in [ws_users, ws_payments, ws_payments_cards, ws_payments_stars, ws_platega_crypto,
-                       ws_fk_sbp, ws_wata_sbp, ws_wata_card, ws_payments_cryptobot, ws_gifts, ws_online, ws_white_counter]:
+                       ws_fk_sbp, ws_wata_sbp, ws_wata_card, ws_payments_cryptobot, ws_gifts, ws_online,
+                       ws_white_counter, ws_platega_autopay, ws_platega_recurent]:
                 ws.freeze_panes = ws['A2']
 
             fd, path = tempfile.mkstemp(suffix=".xlsx")
@@ -422,6 +488,8 @@ async def _export_database_to_excel_impl(message: Message, *, users_full_columns
         payments_wata_sbp_list = snapshot["payments_wata_sbp"]
         payments_wata_card_list = snapshot["payments_wata_card"]
         payments_cryptobot_list = snapshot["payments_cryptobot"]
+        platega_autopay_list = snapshot["platega_autopay_subscriptions"]
+        platega_recurent_list = snapshot["platega_recurent"]
 
         users_count = len(users_list)
         gifts_count = len(gifts_list)
@@ -434,6 +502,8 @@ async def _export_database_to_excel_impl(message: Message, *, users_full_columns
         payments_fk_sbp_count = len(payments_fk_sbp_list)
         payments_wata_sbp_count = len(payments_wata_sbp_list)
         payments_wata_card_count = len(payments_wata_card_list)
+        platega_autopay_count = len(platega_autopay_list)
+        platega_recurent_count = len(platega_recurent_list)
         white_subscription_count = sum(
             1 for u in users_list if u.white_subscription_end_date is not None
         )
@@ -448,6 +518,12 @@ async def _export_database_to_excel_impl(message: Message, *, users_full_columns
         successful_wata_card_count = sum(1 for p in payments_wata_card_list if p.status == "confirmed")
         successful_stars_count = sum(1 for p in payments_stars_list if p.status == "confirmed")
         successful_cryptobot_count = sum(1 for p in payments_cryptobot_list if p.status == "paid")
+        platega_autopay_active_count = sum(
+            1 for p in platega_autopay_list if p.status in ("pending", "active", "past_due")
+        )
+        platega_recurent_confirmed_count = sum(
+            1 for p in platega_recurent_list if p.status == "CONFIRMED"
+        )
 
         try:
             now_s = datetime.now().strftime('%d.%m.%Y %H:%M')
@@ -471,6 +547,8 @@ async def _export_database_to_excel_impl(message: Message, *, users_full_columns
                 f"├ ⭐ Платежей Stars: {successful_stars_count}/{payments_stars_count}\n"
                 f"├ 💰 Платежей Platega Крипто: {successful_platega_crypto_count}/{payments_platega_crypto_count}\n"
                 f"├ 💎 Платежей Криптоботом: {successful_cryptobot_count}/{payments_cryptobot_count}\n"
+                f"├ 🔄 Автоподписок Platega (активных): {platega_autopay_active_count}/{platega_autopay_count}\n"
+                f"├ 🔄 Списаний Platega рекуррент: {platega_recurent_confirmed_count}/{platega_recurent_count}\n"
                 f"├ ⚪ White-подписок: {white_subscription_count}\n"
                 f"└ 👁 White-кликов: {white_counter_count}"
             )

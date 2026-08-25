@@ -22,6 +22,23 @@ from wl_traffic.service import (
 from wl_traffic.texts import format_wl_checker_traffic_purchase
 
 
+async def _maybe_cancel_autopay_on_manual_payment(payload_parts: dict[str, str]) -> None:
+    """Любая разовая оплата подписки (не трафик) отменяет автоплатёж Platega."""
+    duration_raw = payload_parts.get('duration', '0')
+    if parse_traffic_duration(str(duration_raw)) is not None:
+        return
+    if payload_parts.get('gift', 'False') == 'True':
+        return
+    method = payload_parts.get('method', '')
+    if method == 'platega_rec':
+        return
+    user_id = int(payload_parts.get('user_id', 0) or 0)
+    if not user_id:
+        return
+    from payments.platega_recurrent import cancel_user_autopay
+    await cancel_user_autopay(user_id, reason='manual_payment')
+
+
 def _payment_rub_for_partner(method: str, amount: int | float) -> int:
     """Сумма оплаты в рублях для расчёта партнёрского вознаграждения."""
     if method == "stars":
@@ -126,12 +143,13 @@ async def process_confirmed_payment(payload) -> bool:
                 payload_parts[k] = v
             else:
                 payload_parts[item] = "1"
+        await _maybe_cancel_autopay_on_manual_payment(payload_parts)
         user_id = int(payload_parts.get('user_id', 0))
         duration_raw = payload_parts.get('duration', '0')
         traffic_gb = parse_traffic_duration(str(duration_raw))
         if traffic_gb is not None:
             method = payload_parts.get('method', '')
-            if method in ('sbp', 'stars', 'card', 'crypto', 'cryptobot', 'wata_sbp', 'wata_card', 'fk_sbp', 'fk_card'):
+            if method in ('sbp', 'stars', 'card', 'crypto', 'cryptobot', 'wata_sbp', 'wata_card', 'fk_sbp', 'fk_card', 'platega_rec'):
                 amount = int(payload_parts.get('amount', 0))
             else:
                 amount = float(payload_parts.get('amount', 0.0))
@@ -147,7 +165,7 @@ async def process_confirmed_payment(payload) -> bool:
         white_flag = payload_parts.get('white', 'False') == 'True'
         is_gift = payload_parts.get('gift', 'False') == 'True'
         method = payload_parts.get('method', '')
-        if method in ('sbp', 'stars', 'card', 'crypto', 'cryptobot', 'wata_sbp', 'wata_card', 'fk_sbp', 'fk_card'):
+        if method in ('sbp', 'stars', 'card', 'crypto', 'cryptobot', 'wata_sbp', 'wata_card', 'fk_sbp', 'fk_card', 'platega_rec'):
             amount = int(payload_parts.get('amount', 0))
         else:
             amount = float(payload_parts.get('amount', 0.0))
@@ -157,7 +175,7 @@ async def process_confirmed_payment(payload) -> bool:
             f"gift={is_gift}, method={method}, amount={amount}")
 
         # Определяем валюту для сообщения
-        if method in ['sbp', 'card', 'crypto', 'cryptobot', 'wata_sbp', 'wata_card', 'fk_sbp', 'fk_card']:
+        if method in ('sbp', 'card', 'crypto', 'cryptobot', 'wata_sbp', 'wata_card', 'fk_sbp', 'fk_card', 'platega_rec'):
             currency = 'руб'
         elif method == 'stars':
             currency = '⭐️'

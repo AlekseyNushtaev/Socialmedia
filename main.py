@@ -10,7 +10,7 @@ from config import WEB_API_PORT
 from config_bd.models import create_tables, engine
 from config_bd.migrate_users_wl_fields import migrate as migrate_wl_fields
 from config_bd.migrate_wl_traffic_meta import migrate as migrate_wl_traffic_meta
-from payments import pay_stars, pay_cryptobot, pay_platega, pay_freekassa, pay_wl_traffic
+from payments import pay_stars, pay_cryptobot, pay_platega, pay_freekassa, pay_wl_traffic, pay_platega_recurrent
 from sheduler.check_connect import check_connect
 from sheduler.check_cryptobot import check_cryptobot_payments
 from sheduler.check_online import check_online_daily
@@ -43,7 +43,8 @@ from web_api import app as web_app
 
 async def set_commands(bot: Bot):
     commands = [
-        BotCommand(command='/start', description='Запустить бота')
+        BotCommand(command='/start', description='Запустить бота'),
+        BotCommand(command='/sub', description='Отменить автоплатёж СБП'),
     ]
     await bot.set_my_commands(commands)
 
@@ -70,6 +71,7 @@ async def main() -> None:
     # dp.include_router(pay_platega.router)
     # dp.include_router(pay_wata.router)
     dp.include_router(pay_freekassa.router)
+    dp.include_router(pay_platega_recurrent.router)
     dp.include_router(pay_wl_traffic.router)
     dp.include_router(pay_stars.router)
     dp.include_router(pay_cryptobot.router)

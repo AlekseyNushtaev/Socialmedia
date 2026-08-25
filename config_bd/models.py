@@ -219,6 +219,43 @@ class Online(Base):
     users_trial = Column(Integer, nullable=False)
 
 
+class PlategaAutopaySubscription(Base):
+    """Активные/ожидающие рекуррентные СБП-подписки Platega у клиентов."""
+    __tablename__ = 'platega_autopay_subscriptions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    subscription_id = Column(String(64), unique=True, nullable=False)
+    duration = Column(String(16), nullable=False)
+    amount = Column(Integer, nullable=False)
+    status = Column(String(32), nullable=False, default='pending')
+    next_charge_at = Column(DateTime, nullable=True)
+    time_created = Column(DateTime, default=datetime.now)
+    time_cancelled = Column(DateTime, nullable=True)
+    cancel_reason = Column(String(64), nullable=True)
+    payload = Column(String, nullable=True)
+    white = Column(Boolean, default=False)
+    source = Column(String(32), nullable=True)
+
+
+class PlategaRecurent(Base):
+    """Каждое списание по рекуррентной подписке (webhook Platega)."""
+    __tablename__ = 'platega_recurent'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    subscription_id = Column(String(64), nullable=False, index=True)
+    transaction_id = Column(String(64), unique=True, nullable=False)
+    amount = Column(Integer, nullable=False)
+    currency = Column(String(8), nullable=False, default='RUB')
+    status = Column(String(32), nullable=False)
+    payment_method = Column(Integer, nullable=True)
+    payload = Column(String, nullable=True)
+    next_charge_at = Column(DateTime, nullable=True)
+    time_created = Column(DateTime, default=datetime.now)
+    processed = Column(Boolean, default=False)
+
+
 # Функция для создания таблиц (запустить один раз)
 async def create_tables():
     async with engine.begin() as conn:

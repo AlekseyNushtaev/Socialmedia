@@ -54,6 +54,10 @@ WEB_API_PORT: int = int(os.environ.get("WEB_API_PORT", "8080"))
 SUB_PAGE_API_KEY: Optional[str] = (os.environ.get("SUB_PAGE_API_KEY") or "").strip() or None
 SUB_PAGE_CORS_ORIGINS: Optional[str] = os.environ.get("SUB_PAGE_CORS_ORIGINS")
 PUBLIC_SITE_URL: str = (os.environ.get("PUBLIC_SITE_URL") or "").strip().rstrip("/")
+# Публичный URL web_api (для callback Platega). Пример: https://bt.gosocial.run
+WEB_API_PUBLIC_URL: str = (
+    os.environ.get("WEB_API_PUBLIC_URL") or PUBLIC_SITE_URL or ""
+).strip().rstrip("/")
 JWT_SECRET: Optional[str] = os.environ.get("JWT_SECRET")
 GOOGLE_CLIENT_ID: Optional[str] = os.environ.get("GOOGLE_CLIENT_ID")
 PAYMENT_MAX_PENDING_PER_USER: int = int(os.environ.get("PAYMENT_MAX_PENDING_PER_USER", "8"))
