@@ -343,6 +343,13 @@ async def handle_subscription_charge_webhook(data: Dict[str, Any]) -> None:
         logger.warning('Platega charge webhook unknown sub={}', subscription_id)
         return
 
+    if autopay.status == 'cancelled':
+        logger.info(
+            'Platega charge webhook ignored (sub already cancelled): sub={} tx={} status={}',
+            subscription_id, transaction_id, status_raw,
+        )
+        return
+
     pm_int: Optional[int] = None
     if payment_method is not None:
         try:
