@@ -6,7 +6,6 @@ from bot import bot, sql, x3
 from keyboard import (
     keyboard_import_os,
     keyboard_import_app,
-    keyboard_import_sub,
     keyboard_import_after_album,
     create_kb,
     BTN_BACK,
@@ -98,20 +97,10 @@ def _parse_import_app_callback(data: str) -> tuple[str, str] | None:
     return os_key, app_key
 
 
-async def _finish_import(
-    callback: CallbackQuery,
-    os_key: str,
-    app_key: str,
-    *,
-    white: bool,
-) -> None:
+async def _finish_import(callback: CallbackQuery, os_key: str, app_key: str) -> None:
     user_id = str(callback.from_user.id)
-    if white:
-        sub_url = await x3.sublink(user_id + "_white")
-        label = "📱 Мобильный тариф"
-    else:
-        sub_url = await x3.sublink(user_id)
-        label = "💫 Подписка PRO — соцсети"
+    sub_url = await x3.sublink(user_id)
+    label = "💫 Подписка PRO — соцсети"
 
     if not sub_url:
         await edit_or_send_photo(
@@ -183,17 +172,12 @@ async def import_select_app(callback: CallbackQuery):
     F.data.startswith("import_")
     & (F.data.endswith("_incy") | F.data.endswith("_happ") | F.data.endswith("_v2"))
 )
-async def import_select_sub(callback: CallbackQuery):
-    await callback.answer()
+async def import_select_app_finish(callback: CallbackQuery):
     user_data = await sql.get_user(callback.from_user.id)
-    has_casual = has_white = False
-    if user_data:
-        if user_data[9]:
-            has_casual = True
-        if user_data[10]:
-            has_white = True
+    has_sub = bool(user_data and user_data[9])
 
-    if not has_casual and not has_white:
+    if not has_sub:
+        await callback.answer()
         await edit_or_send_photo(
             callback,
             "faq",
@@ -202,12 +186,14 @@ async def import_select_sub(callback: CallbackQuery):
         )
         return
 
-    await edit_or_send_photo(
-        callback,
-        "faq",
-        lexicon["import_select_sub"],
-        keyboard_import_sub(callback.data, has_casual, has_white),
-    )
+    parsed = _parse_import_app_callback(callback.data)
+    if not parsed:
+        await callback.answer("Неверный выбор.", show_alert=True)
+        return
+
+    await callback.answer()
+    os_key, app_key = parsed
+    await _finish_import(callback, os_key, app_key)
 
 
 @router.callback_query(
@@ -215,15 +201,11 @@ async def import_select_sub(callback: CallbackQuery):
     & (F.data.endswith("_casual") | F.data.endswith("_white"))
 )
 async def import_end(callback: CallbackQuery):
+    """Старые сообщения с выбором подписки — сразу инструкция."""
     parsed = _parse_import_app_callback(callback.data or "")
     if not parsed:
         await callback.answer("Неверный выбор.", show_alert=True)
         return
     await callback.answer()
     os_key, app_key = parsed
-    await _finish_import(
-        callback,
-        os_key,
-        app_key,
-        white=callback.data.endswith("_white"),
-    )
+    await _finish_import(callback, os_key, app_key)

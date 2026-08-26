@@ -123,14 +123,6 @@ async def connect_screen_extra(uid: int, user_data: tuple) -> str:
 
     lines = [f"📡 Антиглушилка: {used_gb:.2f} / {limit_gb:.2f} GB"]
 
-    white_end = (
-        user_data[_USER_TUPLE_WHITE_SUBSCRIPTION_END_DATE]
-        if user_data and len(user_data) > _USER_TUPLE_WHITE_SUBSCRIPTION_END_DATE
-        else None
-    )
-    if white_end is not None:
-        lines.append(f"📱 Мобильный тариф: {end_date_status_text(white_end)}")
-
     devices_count = 0
     device_limit = 5
     panel_resp = await x3.get_user_by_username(str(uid))
@@ -235,8 +227,6 @@ def connect_screen_caption(
     user_data: tuple,
     sub_url: Optional[str],
     extra: str,
-    *,
-    sub_url_white: Optional[str] = None,
 ) -> str:
     status = subscription_status_text(user_data)
     parts = [
@@ -247,8 +237,6 @@ def connect_screen_caption(
     ]
     if sub_url:
         parts.extend(["🔗 Ссылка для импорта:", str(sub_url), ""])
-    if sub_url_white:
-        parts.extend(["📱 Мобильный тариф:", str(sub_url_white), ""])
     parts.append(
         "📱 Нажмите «Если страница не загружается», чтобы получить инструкцию по настройке"
     )
@@ -261,28 +249,22 @@ async def show_connect_screen(callback: CallbackQuery) -> bool:
     uid = callback.from_user.id
     user_data = await sql.get_user(uid) or tuple()
     sub_url = await x3.sublink(str(uid))
-    sub_url_white = None
-    if user_data and len(user_data) > _USER_TUPLE_WHITE_SUBSCRIPTION_END_DATE and user_data[_USER_TUPLE_WHITE_SUBSCRIPTION_END_DATE]:
-        sub_url_white = await x3.sublink(str(uid) + "_white")
 
-    if not sub_url and not sub_url_white:
+    if not sub_url:
         await callback.message.answer(lexicon["no_sub"])
         return False
 
     fullname = callback.from_user.full_name or callback.from_user.first_name or "Пользователь"
     extra = await connect_screen_extra(uid, user_data)
-    caption = connect_screen_caption(
-        fullname, user_data, sub_url, extra, sub_url_white=sub_url_white
-    )
+    caption = connect_screen_caption(fullname, user_data, sub_url, extra)
     autopay = await sql.get_status_active_platega_autopay(uid)
     await edit_or_send_photo(
         callback,
         "subscription_manage",
         caption,
         keyboard_subscription_manage(
-            sub_url or "",
+            sub_url,
             has_active_autopay=autopay is not None,
-            sub_url_white=sub_url_white,
         ),
     )
     return True

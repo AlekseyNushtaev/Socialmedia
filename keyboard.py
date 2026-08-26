@@ -339,7 +339,7 @@ def keyboard_devices_list(
                 )
             ]
         )
-    buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data="dev_back_subs")])
+    buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data="connect_vpn")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
