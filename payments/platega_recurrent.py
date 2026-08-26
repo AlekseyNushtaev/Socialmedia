@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hmac
 from datetime import datetime, timezone
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Sequence
 
 import aiohttp
 
@@ -163,19 +163,25 @@ class PlategaRecurrentClient:
                 return await response.json()
 
 
-async def _cancel_platega_autopay_row(row, reason: str) -> bool:
+async def _cancel_platega_autopay_row(
+    row, reason: str, *, require_api_success: bool = False,
+) -> bool:
     """Отмена одной автоподписки в Platega и БД."""
     if row.status == 'cancelled':
         return False
+    api_ok = False
     if PLATEGA_API_KEY and PLATEGA_MERCHANT_ID:
         try:
             client = PlategaRecurrentClient(PLATEGA_API_KEY, PLATEGA_MERCHANT_ID)
             await client.cancel_subscription(row.subscription_id)
+            api_ok = True
         except Exception as e:
             logger.error(
                 'Platega cancel sub={} user={}: {}',
                 row.subscription_id, row.user_id, e,
             )
+    if require_api_success and not api_ok:
+        return False
     await sql.update_platega_autopay_status(row.subscription_id, 'cancelled', cancel_reason=reason)
     logger.info(
         'Autopay cancelled user={} sub={} reason={}',
@@ -183,6 +189,7 @@ async def _cancel_platega_autopay_row(row, reason: str) -> bool:
     )
     reason_labels = {
         'user_command': 'команда /sub',
+        'user_profile': 'кнопка в профиле',
         'manual_payment': 'разовая оплата подписки',
         'new_recurrent': 'новый автоплатёж (первое списание)',
         'manual': 'вручную',
@@ -206,14 +213,26 @@ async def cancel_superseded_autopays(user_id: int, keep_subscription_id: str) ->
             await _cancel_platega_autopay_row(row, reason='new_recurrent')
 
 
-async def cancel_user_autopay(user_id: int, reason: str = 'manual') -> bool:
+async def cancel_user_autopay(
+    user_id: int,
+    reason: str = 'manual',
+    *,
+    require_api_success: bool = False,
+    statuses: Optional[Sequence[str]] = None,
+) -> bool:
     """Отменяет все активные/ожидающие автоподписки Platega у пользователя."""
     rows = await sql.list_active_platega_autopays(user_id)
+    if statuses is not None:
+        rows = [row for row in rows if row.status in statuses]
     if not rows:
         return False
+    any_ok = False
     for row in rows:
-        await _cancel_platega_autopay_row(row, reason=reason)
-    return True
+        if await _cancel_platega_autopay_row(
+            row, reason=reason, require_api_success=require_api_success,
+        ):
+            any_ok = True
+    return any_ok
 
 
 async def create_recurrent_payment(

@@ -16,6 +16,7 @@ from wl_traffic.constants import (
 
 # Единый текст «Назад» для импорта из других модулей
 BTN_BACK = "🔙 Назад"
+CANCEL_AUTOPAY_CB = "cancel_autopay"
 
 STYLE_PRIMARY = "primary"
 STYLE_SUCCESS = "success"
@@ -724,18 +725,17 @@ def keyboard_discount_push_payment(duration: str) -> InlineKeyboardMarkup:
     ])
 
 
-def keyboard_profile() -> InlineKeyboardMarkup:
-    return create_kb(
-        1,
-        styles={
-            WL_TRAFFIC_BUY_CB: STYLE_SUCCESS,
-            "back_to_main": STYLE_PRIMARY,
-        },
-        **{
-            WL_TRAFFIC_BUY_CB: "📦 Купить трафик",
-            "back_to_main": BTN_BACK,
-        },
-    )
+def keyboard_profile(*, has_active_autopay: bool = False) -> InlineKeyboardMarkup:
+    buttons: dict[str, str] = {WL_TRAFFIC_BUY_CB: "📦 Купить трафик"}
+    styles: dict[str, str] = {
+        WL_TRAFFIC_BUY_CB: STYLE_SUCCESS,
+        "back_to_main": STYLE_PRIMARY,
+    }
+    if has_active_autopay:
+        buttons[CANCEL_AUTOPAY_CB] = "Отключить автоплатежи"
+        styles[CANCEL_AUTOPAY_CB] = STYLE_DANGER
+    buttons["back_to_main"] = BTN_BACK
+    return create_kb(1, styles=styles, **buttons)
 
 
 def keyboard_wl_traffic_tariffs(*, back_callback: str = "back_to_main") -> InlineKeyboardMarkup:

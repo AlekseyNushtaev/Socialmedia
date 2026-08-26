@@ -2460,6 +2460,19 @@ class AsyncSQL:
         rows = await self.list_active_platega_autopays(user_id)
         return rows[0] if rows else None
 
+    async def get_status_active_platega_autopay(self, user_id: int) -> Optional[PlategaAutopaySubscription]:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(PlategaAutopaySubscription)
+                .where(
+                    PlategaAutopaySubscription.user_id == user_id,
+                    PlategaAutopaySubscription.status == 'active',
+                )
+                .order_by(PlategaAutopaySubscription.id.desc())
+                .limit(1)
+            )
+            return (await session.execute(stmt)).scalar_one_or_none()
+
     async def list_active_platega_autopays(self, user_id: int) -> List[PlategaAutopaySubscription]:
         async with AsyncSessionLocal() as session:
             stmt = (
