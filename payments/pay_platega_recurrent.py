@@ -87,7 +87,7 @@ async def process_platega_recurrent(callback: CallbackQuery):
         text = format_pro_payment_link(days)
         text += (
             '\n\nДля привязки счёта и оплаты перейдите по ссылке:\n'
-            '<i>Подписка продлевается автоматически. Отмена: /sub</i>'
+            '<i>Подписка продлевается автоматически.</i>'
         )
         await callback.message.edit_text(
             text=text,
