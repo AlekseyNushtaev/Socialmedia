@@ -11,6 +11,7 @@ from lexicon import lexicon, dct_price, dct_desc
 from logging_config import logger
 from payments.payment_limits import payment_creation_allowed
 from payments.tariff_gate import panel_days_from_tariff_key
+from utils.menu_ui import edit_or_send_photo
 from wl_traffic.texts import format_pro_payment_link
 
 
@@ -195,7 +196,7 @@ async def process_payment_crypto(callback: CallbackQuery):
         pay_keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"💎 Оплатить криптой · {rub_amount} ₽", url=result['url'])]
         ])
-        await callback.message.edit_text(text, reply_markup=pay_keyboard)
+        await edit_or_send_photo(callback, "buy_subscription", text, pay_keyboard)
         logger.info(f"Юзер {user_id} создал счет в Cryptobot на {rub_amount} руб {'(подарок)' if gift_flag else ''}")
     else:
         await callback.message.answer(

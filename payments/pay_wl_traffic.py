@@ -12,6 +12,7 @@ from logging_config import logger
 from payments.pay_cryptobot import create_cryptobot_payment
 from payments.pay_freekassa import pay
 from payments.payload_source import BOT
+from utils.menu_ui import edit_or_send_photo
 from wl_traffic.constants import WL_TRAFFIC_TARIFFS
 
 router = Router()
@@ -59,10 +60,11 @@ async def _pay_fk(callback: CallbackQuery, ui_kind: str) -> None:
 
     btn = "⚡ Оплатить СБП" if ui_kind == "sbp" else "💳 Оплатить картой РФ"
     if payment_info["status"] == "pending":
-        await callback.message.edit_text(
-            text=lexicon["wl_traffic_payment_link"].format(gb=gb),
-            parse_mode="HTML",
-            reply_markup=keyboard_payment_sbp(btn, payment_info["url"]),
+        await edit_or_send_photo(
+            callback,
+            "buy_traffic",
+            lexicon["wl_traffic_payment_link"].format(gb=gb),
+            keyboard_payment_sbp(btn, payment_info["url"]),
         )
     elif payment_info["status"] == "rate_limited":
         await callback.message.answer(
@@ -131,10 +133,11 @@ async def wl_traffic_pay_crypto(callback: CallbackQuery):
                 url=result["url"],
             )]
         ])
-        await callback.message.edit_text(
-            text=lexicon["wl_traffic_payment_link"].format(gb=gb),
-            parse_mode="HTML",
-            reply_markup=pay_keyboard,
+        await edit_or_send_photo(
+            callback,
+            "buy_traffic",
+            lexicon["wl_traffic_payment_link"].format(gb=gb),
+            pay_keyboard,
         )
     else:
         await callback.message.answer(

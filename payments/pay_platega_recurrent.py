@@ -12,6 +12,7 @@ from payments.payload_source import BOT
 from payments.platega_recurrent import cancel_user_autopay, create_recurrent_payment, is_recurrent_tariff
 from wl_traffic.texts import format_pro_payment_link
 from payments.tariff_gate import panel_days_from_tariff_key, tariff_key_from_callback, tariff_period_label
+from utils.menu_ui import edit_or_send_photo
 
 router = Router()
 
@@ -89,10 +90,11 @@ async def process_platega_recurrent(callback: CallbackQuery):
             '\n\nДля привязки счёта и оплаты перейдите по ссылке:\n'
             '<i>Подписка продлевается автоматически.</i>'
         )
-        await callback.message.edit_text(
-            text=text,
-            reply_markup=keyboard_payment_sbp('⚡ Оплатить СБП', payment_info['url']),
-            parse_mode='HTML',
+        await edit_or_send_photo(
+            callback,
+            "buy_subscription",
+            text,
+            keyboard_payment_sbp('⚡ Оплатить СБП', payment_info['url']),
         )
         logger.info('User {} created Platega recurrent {} ₽ duration={}', user_id, rub_amount, duration)
         return

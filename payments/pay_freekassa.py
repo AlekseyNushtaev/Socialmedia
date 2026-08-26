@@ -24,6 +24,7 @@ from logging_config import logger
 from payments.payment_limits import payment_creation_allowed
 from payments.payload_source import BOT, SITE
 from payments.tariff_gate import panel_days_from_tariff_key
+from utils.menu_ui import edit_or_send_photo
 from wl_traffic.texts import format_pro_payment_link
 
 router = Router()
@@ -413,9 +414,11 @@ async def _handle_wata_style_callback(callback: CallbackQuery, ui_kind: UiKind) 
                 text += "\n\nДля оплаты <b>подарочной подписки</b> перейдите по ссылке:"
             else:
                 text += "\n\nДля оплаты тарифа перейдите по ссылке:"
-            await callback.message.edit_text(
-                text=text,
-                reply_markup=keyboard_payment_sbp(btn, payment_info["url"]),
+            await edit_or_send_photo(
+                callback,
+                "buy_subscription",
+                text,
+                keyboard_payment_sbp(btn, payment_info["url"]),
             )
             logger.info(
                 f"Юзер {user_id} создал {log_label} {_fk_amount_rub(str(rub_amount), ui_kind)} руб "
