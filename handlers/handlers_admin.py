@@ -1915,6 +1915,79 @@ async def add_7_to_all_confirm(callback: CallbackQuery):
     )
 
 
+_SEND_PUSH_260826_IDS = tuple(dict.fromkeys((
+    1111125398,
+    2142189201,
+    7275357325,
+    7465970061,
+    6785007339,
+    5182288190,
+    7465970061,
+    804266114,
+    5027507208,
+    5709574103,
+    6412110419,
+    526661856,
+    2011652455,
+    1111125398,
+)))
+_SEND_PUSH_260826_TEXT = "Возможность оплаты подписки восстановлена"
+_SEND_PUSH_260826_KB = create_kb(
+    1,
+    styles={"buy_vpn": STYLE_PRIMARY},
+    buy_vpn="💰 Купить подписку",
+)
+
+
+@router.message(Command(commands=["send_push_260826"]))
+async def send_push_260826_command(message: Message):
+    """Разовая рассылка: оплата восстановлена, кнопка «Купить подписку»."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    user_ids = _SEND_PUSH_260826_IDS
+    total = len(user_ids)
+    admin_chat_id = message.chat.id
+    await message.answer(
+        f"📣 /send_push_260826 — старт.\n"
+        f"Уникальных получателей: <b>{total}</b>."
+    )
+
+    sent = 0
+    failed = 0
+    failed_ids: list[int] = []
+
+    for user_id in user_ids:
+        try:
+            await bot.send_message(
+                user_id,
+                _SEND_PUSH_260826_TEXT,
+                reply_markup=_SEND_PUSH_260826_KB,
+            )
+            sent += 1
+        except Exception as e:
+            failed += 1
+            failed_ids.append(user_id)
+            logger.warning("send_push_260826: не отправлено user_id=%s: %s", user_id, e)
+        await asyncio.sleep(0.05)
+
+    report = (
+        "✅ /send_push_260826 — отчёт\n"
+        f"• В списке (уникальных): {total}\n"
+        f"• Отправлено: {sent}\n"
+        f"• Ошибок: {failed}"
+    )
+    if failed_ids:
+        report += "\n• Не доставлено: " + ", ".join(str(uid) for uid in failed_ids)
+    await bot.send_message(admin_chat_id, report)
+    logger.info(
+        "Админ %s /send_push_260826: sent=%s failed=%s",
+        message.from_user.id,
+        sent,
+        failed,
+    )
+
+
 @router.message(Command(commands=['send_push']))
 async def send_push_command(message: Message):
     """Отправляет информационное сообщение пользователям, созданным до 16 марта 2026,
