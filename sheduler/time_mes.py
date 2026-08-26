@@ -193,7 +193,7 @@ async def send_message_cron(bot: Bot):
                         reply_markup=create_kb(
                             1,
                             styles={'connect_vpn': STYLE_PRIMARY},
-                            connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                            connect_vpn='🔗 Подключить VPN',
                             video_faq='🎥 Видеоинструкция',
                         ),
                     )

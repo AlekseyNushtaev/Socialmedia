@@ -15,7 +15,6 @@ from aiogram.types import (
 from bot import bot, sql
 from config import ADMIN_IDS, DISCOUNT_PUSH_PHOTO_ID, PAYMENT_MAX_PENDING_PER_USER
 from keyboard import (
-    STYLE_SUCCESS,
     create_kb,
     keyboard_discount_push_buy,
     keyboard_discount_push_payment,
@@ -167,7 +166,7 @@ async def _create_discount_fk_payment(
             callback,
             text,
             InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=btn, url=payment_info["url"], style=STYLE_SUCCESS)]
+                [InlineKeyboardButton(text=btn, url=payment_info["url"])]
             ]),
         )
         logger.info(
@@ -238,7 +237,6 @@ async def discount_push_pay_crypto(callback: CallbackQuery):
             [InlineKeyboardButton(
                 text=f"💎 Оплатить криптовалютой ({rub_amount} ₽)",
                 url=result["url"],
-                style=STYLE_SUCCESS,
             )]
         ])
         await _delete_and_answer(callback, text, pay_keyboard)

@@ -1,38 +1,23 @@
-import urllib.parse
-
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InputMediaPhoto
 
-from bot import sql, x3
+from bot import bot, sql, x3
 from keyboard import (
     keyboard_import_os,
     keyboard_import_app,
     keyboard_import_sub,
-    keyboard_import_end,
+    keyboard_import_after_album,
     create_kb,
     BTN_BACK,
 )
 from lexicon import lexicon
+from utils.menu_photos import import_photos
+from utils.menu_ui import edit_or_send_photo
 
 router: Router = Router()
 
 OS_CALLBACKS = {'import_android', 'import_ios', 'import_windows', 'import_macos'}
-
-INCY_PHOTOS = [
-    'AgACAgQAAxkBAAGCd8NqQlYYedInEKDsyGCV4Rr1UohhCgACAg9rG-RnGFIdvB7Gu0GgRQEAAwIAA3gAAzwE',
-    'AgACAgQAAxkBAAGCd8VqQlYgVMKvJoaoyBljiVVFJF55EQACAw9rG-RnGFKGaw6TG_0IfQEAAwIAA3gAAzwE',
-]
-
-HAPP_PHOTOS = [
-    'AgACAgIAAxkBAAIPmWnEKQRBvj4RG0McyGUKCyfy2MMAA84Zaxu4bCFK9rcoMhDWNSsBAAMCAAN5AAM6BA',
-    'AgACAgIAAxkBAAIPu2nEKRIZIT3pNE9gsRkj4-_MVw1zAALPGWsbuGwhStCMPo97YAbTAQADAgADeQADOgQ',
-]
-
-V2_PHOTOS = [
-    'AgACAgIAAxkBAAIQf2nEKWepYcZqa1QUuJJFas95QQVfAALTGWsbuGwhSv7MqSbIZegwAQADAgADeQADOgQ',
-    'AgACAgIAAxkBAAIQk2nEKW9WBjzeB5iQ4zt4VKimPHEFAALUGWsbuGwhSvPA4dR652E3AQADAgADeQADOgQ',
-    'AgACAgIAAxkBAAIQnmnEKXWEhq62u6Oxqgk-VeDVASFPAALVGWsbuGwhSvRfGK_Pm9yCAQADAgADeQADOgQ',
-]
 
 OS_DISPLAY = {
     'android': '🤖 Android',
@@ -103,27 +88,100 @@ IMPORT_URLS = {
 }
 
 
-@router.callback_query(F.data == 'import')
+def _parse_import_app_callback(data: str) -> tuple[str, str] | None:
+    parts = (data or "").split("_")
+    if len(parts) < 3 or parts[0] != "import":
+        return None
+    os_key, app_key = parts[1], parts[2]
+    if os_key not in OS_DISPLAY or app_key not in APP_DISPLAY:
+        return None
+    return os_key, app_key
+
+
+async def _finish_import(
+    callback: CallbackQuery,
+    os_key: str,
+    app_key: str,
+    *,
+    white: bool,
+) -> None:
+    user_id = str(callback.from_user.id)
+    if white:
+        sub_url = await x3.sublink(user_id + "_white")
+        label = "📱 Мобильный тариф"
+    else:
+        sub_url = await x3.sublink(user_id)
+        label = "💫 Подписка PRO — соцсети"
+
+    if not sub_url:
+        await edit_or_send_photo(
+            callback,
+            "faq",
+            "❌ Не удалось получить ссылку. Обратитесь в поддержку.",
+            create_kb(1, back_to_main=BTN_BACK),
+        )
+        return
+
+    urls = IMPORT_URLS[os_key][app_key]
+    url_app = urls["url_app"]
+
+    if app_key == "incy":
+        lexicon_key = "import_end_incy"
+    elif app_key == "happ":
+        lexicon_key = "import_end_happ"
+    else:
+        lexicon_key = "import_end_v2"
+
+    photos = import_photos(app_key)
+    caption = lexicon[lexicon_key].format(
+        os=OS_DISPLAY[os_key],
+        app=APP_DISPLAY[app_key],
+        label=label,
+        url_app=url_app,
+        url_import=sub_url,
+    )
+
+    media = [InputMediaPhoto(media=file_id) for file_id in photos]
+    media[0] = InputMediaPhoto(media=photos[0], caption=caption, parse_mode="HTML")
+
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+
+    await bot.send_media_group(callback.message.chat.id, media=media)
+    await bot.send_message(
+        callback.message.chat.id,
+        "Если нужно, вернитесь в меню:",
+        reply_markup=keyboard_import_after_album(),
+    )
+
+
+@router.callback_query(F.data == "import")
 async def import_select_os(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.answer(
-        text=lexicon['import_start'],
-        reply_markup=keyboard_import_os()
+    await edit_or_send_photo(
+        callback,
+        "faq",
+        lexicon["import_start"],
+        keyboard_import_os(),
     )
 
 
 @router.callback_query(F.data.in_(OS_CALLBACKS))
 async def import_select_app(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.answer(
-        text=lexicon['import_select_app'],
-        reply_markup=keyboard_import_app(callback.data)
+    await edit_or_send_photo(
+        callback,
+        "faq",
+        lexicon["import_select_app"],
+        keyboard_import_app(callback.data),
     )
 
 
 @router.callback_query(
-    F.data.startswith('import_') &
-    (F.data.endswith('_incy') | F.data.endswith('_happ') | F.data.endswith('_v2'))
+    F.data.startswith("import_")
+    & (F.data.endswith("_incy") | F.data.endswith("_happ") | F.data.endswith("_v2"))
 )
 async def import_select_sub(callback: CallbackQuery):
     await callback.answer()
@@ -136,68 +194,36 @@ async def import_select_sub(callback: CallbackQuery):
             has_white = True
 
     if not has_casual and not has_white:
-        await callback.message.answer(
-            text=lexicon['no_sub'],
-            reply_markup=create_kb(1, back_to_main=BTN_BACK)
+        await edit_or_send_photo(
+            callback,
+            "faq",
+            lexicon["no_sub"],
+            create_kb(1, back_to_main=BTN_BACK),
         )
         return
 
-    await callback.message.answer(
-        text=lexicon['import_select_sub'],
-        reply_markup=keyboard_import_sub(callback.data, has_casual, has_white)
+    await edit_or_send_photo(
+        callback,
+        "faq",
+        lexicon["import_select_sub"],
+        keyboard_import_sub(callback.data, has_casual, has_white),
     )
 
 
 @router.callback_query(
-    F.data.startswith('import_') &
-    (F.data.endswith('_casual') | F.data.endswith('_white'))
+    F.data.startswith("import_")
+    & (F.data.endswith("_casual") | F.data.endswith("_white"))
 )
 async def import_end(callback: CallbackQuery):
-    await callback.answer()
-    user_id = str(callback.from_user.id)
-
-    if callback.data.endswith('_white'):
-        sub_url = await x3.sublink(user_id + '_white')
-        label = '📱 Мобильный тариф'
-    else:
-        sub_url = await x3.sublink(user_id)
-        label = '💫 Подписка PRO — соцсети'
-
-    if not sub_url:
-        await callback.message.answer(
-            '❌ Не удалось получить ссылку. Обратитесь в поддержку.',
-            reply_markup=create_kb(1, back_to_main=BTN_BACK)
-        )
+    parsed = _parse_import_app_callback(callback.data or "")
+    if not parsed:
+        await callback.answer("Неверный выбор.", show_alert=True)
         return
-
-    parts = callback.data.split('_')
-    os_key = parts[1]
-    app_key = parts[2]
-
-    urls = IMPORT_URLS[os_key][app_key]
-    url_app = urls['url_app']
-
-    if app_key == 'incy':
-        lexicon_key = 'import_end_incy'
-        photos = INCY_PHOTOS
-    elif app_key == 'happ':
-        lexicon_key = 'import_end_happ'
-        photos = HAPP_PHOTOS
-    else:
-        lexicon_key = 'import_end_v2'
-        photos = V2_PHOTOS
-
-    caption = lexicon[lexicon_key].format(
-        os=OS_DISPLAY[os_key],
-        app=APP_DISPLAY[app_key],
-        label=label,
-        url_app=url_app,
-        url_import=sub_url,
+    await callback.answer()
+    os_key, app_key = parsed
+    await _finish_import(
+        callback,
+        os_key,
+        app_key,
+        white=callback.data.endswith("_white"),
     )
-
-    media = [InputMediaPhoto(media=file_id) for file_id in photos]
-    media[0] = InputMediaPhoto(media=photos[0], caption=caption, parse_mode='HTML')
-
-    await callback.message.answer_media_group(media=media)
-
-

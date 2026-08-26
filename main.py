@@ -7,6 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot import bot
 from config import WEB_API_PORT
+from utils.menu_photos import init_menu_photos
 from config_bd.models import create_tables, engine
 from config_bd.migrate_users_wl_fields import migrate as migrate_wl_fields
 from config_bd.migrate_wl_traffic_meta import migrate as migrate_wl_traffic_meta
@@ -119,6 +120,7 @@ async def main() -> None:
     scheduler.start()
 
     await set_commands(bot)
+    await init_menu_photos(bot)
 
     uv_config = uvicorn.Config(web_app, host="0.0.0.0", port=WEB_API_PORT)
     server = uvicorn.Server(uv_config)

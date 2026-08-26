@@ -71,21 +71,21 @@ SCOPE_LABEL = {
 # Тексты и callback_data как в keyboard.py (главное меню и тарифы)
 # (preset_id, callback_data, text, style)
 CUSTOM_PRESETS = [
-    ("free_vpn", "free_vpn", "✨ Попробовать бесплатно", STYLE_SUCCESS),
-    ("buy_vpn", "buy_vpn", "💰 Купить подписку", STYLE_SUCCESS),
-    ("connect_vpn", "connect_vpn", "🌐 Подключить Ускоритель соцсетей", STYLE_PRIMARY),
-    ("ref", "ref", "👭 Реферальная программа", STYLE_PRIMARY),
-    ("buy_gift", "buy_gift", "🎁 Подарить подписку", STYLE_SUCCESS),
-    ("ref_invite", "ref_invite", "Пригласить друзей🫶", STYLE_SUCCESS),
-    ("r_7", "r_7", "👌 7 дней - 99 руб", STYLE_PRIMARY),
-    ("r_30", "r_30", "🤝 1 месяц - 299 руб", STYLE_PRIMARY),
-    ("r_90", "r_90", "✅ 3 месяца - 749 руб (выгода -16%)", STYLE_SUCCESS),
-    ("r_180", "r_180", "🏆 6 месяцев - 1349 руб (выгода -25%)", STYLE_SUCCESS),
-    ("r_365", "r_365", "💎 1 год - 2399 руб (выгода -33%)", STYLE_SUCCESS),
-    ("r_white_30", "r_white_30", "📱 Мобильный тариф - 499 руб", STYLE_PRIMARY),
-    ("forever_sale_1", "r_5000sale", '✅ Получить "Навсегда" за 2790 ₽', STYLE_SUCCESS),
-    ("forever_sale_2", "r_5000sale", '🔥 Успеть оформить "Навсегда" за 2790 ₽', STYLE_SUCCESS),
-    ("forever_sale_3", "r_5000sale", '✨ Забрать "Навсегда" за 2790 ₽', STYLE_SUCCESS),
+    ("free_vpn", "free_vpn", "✨ Попробовать бесплатно", None),
+    ("buy_vpn", "buy_vpn", "💰 Купить подписку", STYLE_PRIMARY),
+    ("connect_vpn", "connect_vpn", "🔗 Подключить VPN", STYLE_PRIMARY),
+    ("ref", "ref", "👭 Реферальная программа", None),
+    ("buy_gift", "buy_gift", "🎁 Подарить подписку", None),
+    ("ref_invite", "ref_invite", "Пригласить друзей🫶", None),
+    ("r_7", "r_7", "👌 7 дней - 99 руб", None),
+    ("r_30", "r_30", "🤝 1 месяц - 299 руб", None),
+    ("r_90", "r_90", "✅ 3 месяца - 749 руб (выгода -16%)", None),
+    ("r_180", "r_180", "🏆 6 месяцев - 1349 руб (выгода -25%)", None),
+    ("r_365", "r_365", "💎 1 год - 2399 руб (выгода -33%)", None),
+    ("r_white_30", "r_white_30", "📱 Мобильный тариф - 499 руб", None),
+    ("forever_sale_1", "r_5000sale", '✅ Получить "Навсегда" за 2790 ₽', None),
+    ("forever_sale_2", "r_5000sale", '🔥 Успеть оформить "Навсегда" за 2790 ₽', None),
+    ("forever_sale_3", "r_5000sale", '✨ Забрать "Навсегда" за 2790 ₽', None),
 ]
 
 
@@ -248,19 +248,19 @@ def _build_custom_reply_markup(spec: list, target_user_id: int) -> InlineKeyboar
     for entry in spec:
         st = entry.get("style")
         if entry["kind"] == "cb":
-            btn = InlineKeyboardButton(
-                text=entry["text"],
-                callback_data=entry["cb"],
-                style=st,
-            )
-            rows.append([btn])
+            kw = {"text": entry["text"], "callback_data": entry["cb"]}
+            if st:
+                kw["style"] = st
+            rows.append([InlineKeyboardButton(**kw)])
         else:
             if entry.get("ref_invite"):
                 url = _ref_invite_url(target_user_id)
             else:
                 url = str(entry["url"]).replace("{user_id}", str(target_user_id))
-            btn = InlineKeyboardButton(text=entry["text"], url=url, style=st)
-            rows.append([btn])
+            kw = {"text": entry["text"], "url": url}
+            if st:
+                kw["style"] = st
+            rows.append([InlineKeyboardButton(**kw)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

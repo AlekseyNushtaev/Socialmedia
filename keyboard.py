@@ -4,19 +4,18 @@ from typing import List, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANEL_URL, BOT_URL, DOCUMENT_URL_1, DOCUMENT_URL_2
+from config import CHANEL_URL, BOT_URL, DOCUMENT_URL_1, DOCUMENT_URL_2, SUPPORT_URL
 from lexicon import dct_price_discount_33
 from wl_traffic.constants import (
     BUY_VPN_CB,
-    PROFILE_CB,
     WL_TRAFFIC_BUY_CB,
     WL_TRAFFIC_BUY_SUB_CB,
     WL_TRAFFIC_TARIFFS,
 )
 
-# Единый текст «Назад» для импорта из других модулей
-BTN_BACK = "🔙 Назад"
+BTN_BACK = "◀️ Назад"
 CANCEL_AUTOPAY_CB = "cancel_autopay"
+ABOUT_SERVICE_CB = "about_service"
 
 STYLE_PRIMARY = "primary"
 STYLE_SUCCESS = "success"
@@ -68,77 +67,173 @@ def chanel_keyboard():
             InlineKeyboardButton(
                 text="👉Подписаться на канал",
                 url=CHANEL_URL,
-                style=STYLE_PRIMARY,
             )
         ]
     ])
     return keyboard
 
 
-def keyboard_start_bonus():
-    markup = create_kb(
-        1,
-        styles={"free_vpn": STYLE_SUCCESS, "buy_vpn": STYLE_SUCCESS},
-        free_vpn="✨ Попробовать бесплатно",
-        buy_vpn="💰 Купить подписку",
-    )
-    rows = list(markup.inline_keyboard)
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def keyboard_start():
-    markup = create_kb(
-        1,
-        styles={
-            "buy_vpn": STYLE_SUCCESS,
-            "connect_vpn": STYLE_PRIMARY,
-            "manage_devices": STYLE_PRIMARY,
-            "ref": STYLE_PRIMARY,
-            "buy_gift": STYLE_SUCCESS,
-            "user_profile": STYLE_PRIMARY,
-        },
-        buy_vpn="💰 Купить подписку",
-        connect_vpn="🌐 Подключить Ускоритель соцсетей",
-        manage_devices="📱 Управление устройствами",
-        ref="👭 Бесплатный VPN за приглашения",
-        buy_gift="🎁 Подарить подписку",
-        user_profile="👤 Профиль",
-        # info="💡 Информация",
-    )
-    rows = list(markup.inline_keyboard)
+def keyboard_start(
+    *,
+    has_active_sub: bool = False,
+    buy_primary: bool = True,
+    sub_url: Optional[str] = None,
+    show_trial: bool = False,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if has_active_sub:
+        if sub_url:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="🔗 Подключить VPN",
+                        url=sub_url,
+                        style=STYLE_PRIMARY,
+                    )
+                ]
+            )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Управление подпиской",
+                    callback_data="connect_vpn",
+                )
+            ]
+        )
+    buy_kwargs = {"text": "💰 Купить подписку", "callback_data": "buy_vpn"}
+    if buy_primary:
+        buy_kwargs["style"] = STYLE_PRIMARY
+    rows.append([InlineKeyboardButton(**buy_kwargs)])
+    if show_trial:
+        rows.append(
+            [InlineKeyboardButton(text="Попробовать бесплатно", callback_data="free_vpn")]
+        )
     rows.append(
         [
+            InlineKeyboardButton(
+                text="💸 Заработок",
+                callback_data="earn_with_us",
+            ),
             InlineKeyboardButton(
                 text="🌐 Наш сайт",
                 callback_data=OPEN_SITE_CB,
-                style=STYLE_PRIMARY,
+            ),
+        ]
+    )
+    support_url = SUPPORT_URL or "https://t.me/"
+    rows.append(
+        [
+            InlineKeyboardButton(text="О сервисе", callback_data=ABOUT_SERVICE_CB),
+            InlineKeyboardButton(
+                text="Поддержка",
+                url=support_url,
+            ),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def keyboard_start_bonus():
+    return keyboard_start(has_active_sub=False, buy_primary=True, show_trial=True)
+
+
+def keyboard_trial_existing_expired() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")],
+        ]
+    )
+
+
+def keyboard_subscription_manage(
+    sub_url: str,
+    *,
+    has_active_autopay: bool = False,
+    sub_url_white: Optional[str] = None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if sub_url_white:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="📱 Мобильный тариф",
+                    url=sub_url_white,
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="📦 Купить трафик",
+                callback_data=WL_TRAFFIC_BUY_CB,
             )
         ]
     )
     rows.append(
         [
             InlineKeyboardButton(
-                text="💸 Зарабатывай с нами",
-                callback_data="partner_earn",
-                style=STYLE_SUCCESS,
+                text="Управление устройствами",
+                callback_data="manage_devices",
+            ),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Если страница не загружается",
+                callback_data="import",
             )
         ]
     )
+    if has_active_autopay:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Отключить автоплатежи",
+                    callback_data=CANCEL_AUTOPAY_CB,
+                )
+            ]
+        )
+    rows.append([InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-_STYLES_TARIFF = {
-    "r_7": STYLE_PRIMARY,
-    "r_30": STYLE_PRIMARY,
-    "r_90": STYLE_SUCCESS,
-    "r_180": STYLE_SUCCESS,
-    "r_365": STYLE_SUCCESS,
-    "r_5000": STYLE_SUCCESS,
-    "r_white_30": STYLE_PRIMARY,
-    "r_30old": STYLE_PRIMARY,
-    "free_vpn": STYLE_SUCCESS,
-    WL_TRAFFIC_BUY_SUB_CB: STYLE_SUCCESS,
-}
+def keyboard_about_service() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Пользовательское соглашение",
+                    url=DOCUMENT_URL_1,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Политика конфиденциальности",
+                    url=DOCUMENT_URL_2,
+                )
+            ],
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")],
+        ]
+    )
+
+
+def keyboard_buy_menu() -> InlineKeyboardMarkup:
+    return create_kb(
+        1,
+        buy_vpn_self="👤 Для себя",
+        buy_gift="🎁 Подарить подписку",
+        back_to_main=BTN_BACK,
+    )
+
+
+def keyboard_earn_with_us() -> InlineKeyboardMarkup:
+    return create_kb(
+        1,
+        ref="👭 Бесплатный VPN за приглашения",
+        partner_earn="🔗 Партнерская ссылка",
+        back_to_main=BTN_BACK,
+    )
 
 
 def _tariff_keyboard_kwargs(*, with_trial: bool) -> dict[str, str]:
@@ -150,7 +245,7 @@ def _tariff_keyboard_kwargs(*, with_trial: bool) -> dict[str, str]:
         "r_365": "💎 1 год - 2399 руб (выгода -33%)",
         "r_5000": "♾️ Навсегда — 4990 руб",
         WL_TRAFFIC_BUY_SUB_CB: "📦 Купить трафик Антиглушилка",
-        "back_to_main": BTN_BACK,
+        "back_to_buy_menu": BTN_BACK,
     }
     if with_trial:
         kwargs["free_vpn"] = "✨ПОПРОБОВАТЬ 3 дня БЕСПЛАТНО✨"
@@ -158,50 +253,26 @@ def _tariff_keyboard_kwargs(*, with_trial: bool) -> dict[str, str]:
 
 
 def keyboard_tariff_bonus():
-    return create_kb(
-        1,
-        styles=_STYLES_TARIFF,
-        **_tariff_keyboard_kwargs(with_trial=True),
-    )
+    return create_kb(1, **_tariff_keyboard_kwargs(with_trial=True))
 
 
 def keyboard_tariff():
-    return create_kb(
-        1,
-        styles={k: v for k, v in _STYLES_TARIFF.items() if k != "free_vpn"},
-        **_tariff_keyboard_kwargs(with_trial=False),
-    )
+    return create_kb(1, **_tariff_keyboard_kwargs(with_trial=False))
 
 
 def keyboard_tariff_trial():
-    return create_kb(
-        1,
-        styles={k: v for k, v in _STYLES_TARIFF.items() if k != "free_vpn"},
-        **_tariff_keyboard_kwargs(with_trial=False),
-    )
-
-
-_STYLES_GIFT = {
-    "gift_r_7": STYLE_PRIMARY,
-    "gift_r_30": STYLE_PRIMARY,
-    "gift_r_90": STYLE_SUCCESS,
-    "gift_r_180": STYLE_SUCCESS,
-    "gift_r_365": STYLE_SUCCESS,
-    "gift_r_white_30": STYLE_PRIMARY,
-}
+    return create_kb(1, **_tariff_keyboard_kwargs(with_trial=False))
 
 
 def keyboard_gift_tariff():
     return create_kb(
         1,
-        styles=_STYLES_GIFT,
         gift_r_7="👌 7 дней - 99 руб",
         gift_r_30="🤝 1 месяц - 299 руб",
         gift_r_90="✅ 3 месяца - 749 руб (выгода -16%)",
         gift_r_180="🏆 6 месяцев - 1349 руб (выгода -25%)",
         gift_r_365="💎 1 год - 2399 руб (выгода -33%)",
-        # gift_r_white_30="📱 Мобильный тариф - 499 руб",
-        back_to_main="🔙 Назад",
+        back_to_buy_menu=BTN_BACK,
     )
 
 
@@ -213,7 +284,6 @@ def keyboard_subscription(sub_url, sub_url_white):
                 InlineKeyboardButton(
                     text="💫 Подписка PRO — соцсети",
                     url=sub_url,
-                    style=STYLE_PRIMARY,
                 )
             ]
         )
@@ -223,7 +293,6 @@ def keyboard_subscription(sub_url, sub_url_white):
                 InlineKeyboardButton(
                     text="📱 Мобильный тариф",
                     url=sub_url_white,
-                    style=STYLE_PRIMARY,
                 )
             ]
         )
@@ -232,11 +301,10 @@ def keyboard_subscription(sub_url, sub_url_white):
             InlineKeyboardButton(
                 text="⚠️ Если страница не загружается",
                 callback_data="import",
-                style=STYLE_DANGER,
             )
         ]
     )
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")])
+    buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -249,11 +317,10 @@ def keyboard_devices_subscriptions(slots: list[tuple[str, str]]) -> InlineKeyboa
                 InlineKeyboardButton(
                     text=label[:64],
                     callback_data=f"dev_sub_{slot_key}",
-                    style=STYLE_PRIMARY,
                 )
             ]
         )
-    buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data="dev_back_main")])
+    buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data="connect_vpn")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -269,7 +336,6 @@ def keyboard_devices_list(
                 InlineKeyboardButton(
                     text=btn_text[:64],
                     callback_data=f"dev_rm_{slot_key}_{idx}",
-                    style=STYLE_DANGER,
                 )
             ]
         )
@@ -284,12 +350,10 @@ def keyboard_devices_confirm(slot_key: str, device_idx: int) -> InlineKeyboardMa
                 InlineKeyboardButton(
                     text="✅ Да",
                     callback_data=f"dev_rm_yes_{slot_key}_{device_idx}",
-                    style=STYLE_DANGER,
                 ),
                 InlineKeyboardButton(
                     text="❌ Нет",
                     callback_data=f"dev_sub_{slot_key}",
-                    style=STYLE_PRIMARY,
                 ),
             ],
         ]
@@ -299,17 +363,11 @@ def keyboard_devices_confirm(slot_key: str, device_idx: int) -> InlineKeyboardMa
 def keyboard_import_os():
     return create_kb(
         1,
-        styles={
-            "import_android": STYLE_PRIMARY,
-            "import_ios": STYLE_PRIMARY,
-            "import_windows": STYLE_PRIMARY,
-            "import_macos": STYLE_PRIMARY,
-        },
         import_android="🤖 Android",
         import_ios="🍎 iOS",
         import_windows="🖥️ Windows",
         import_macos="🍏 MacOS",
-        back_to_main="🔙 Назад",
+        back_to_main=BTN_BACK,
     )
 
 
@@ -320,24 +378,21 @@ def keyboard_import_app(os_callback: str):
                 InlineKeyboardButton(
                     text="🔥 INCY",
                     callback_data=f"{os_callback}_incy",
-                    style=STYLE_PRIMARY,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="⭐️ Happ",
                     callback_data=f"{os_callback}_happ",
-                    style=STYLE_PRIMARY,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="📡 V2raytun",
                     callback_data=f"{os_callback}_v2",
-                    style=STYLE_PRIMARY,
                 )
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="import")],
         ]
     )
 
@@ -350,7 +405,6 @@ def keyboard_import_sub(app_callback: str, has_casual: bool, has_white: bool):
                 InlineKeyboardButton(
                     text="💫 Подписка PRO — соцсети",
                     callback_data=f"{app_callback}_casual",
-                    style=STYLE_PRIMARY,
                 )
             ]
         )
@@ -360,12 +414,18 @@ def keyboard_import_sub(app_callback: str, has_casual: bool, has_white: bool):
                 InlineKeyboardButton(
                     text="📱 Мобильный тариф",
                     callback_data=f"{app_callback}_white",
-                    style=STYLE_PRIMARY,
                 )
             ]
         )
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")])
+    buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data="import")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def keyboard_import_after_album() -> InlineKeyboardMarkup:
+    return create_kb(
+        1,
+        connect_vpn="🔙 Назад к подписке",
+    )
 
 
 def keyboard_sub_after_buy(sub_url):
@@ -375,24 +435,21 @@ def keyboard_sub_after_buy(sub_url):
                 InlineKeyboardButton(
                     text="📋 В личный кабинет",
                     url=sub_url,
-                    style=STYLE_PRIMARY,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="⚠️ Если страница не загружается",
                     callback_data="import",
-                    style=STYLE_DANGER,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="🎁 Подарить подписку",
                     callback_data="buy_gift",
-                    style=STYLE_SUCCESS,
                 )
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")],
         ]
     )
     return keyboard
@@ -405,17 +462,15 @@ def keyboard_sub_after_free(sub_url):
                 InlineKeyboardButton(
                     text="📋 В личный кабинет",
                     url=sub_url,
-                    style=STYLE_PRIMARY,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="⚠️ Если страница не загружается",
                     callback_data="import",
-                    style=STYLE_DANGER,
                 )
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")],
         ]
     )
     return keyboard
@@ -435,10 +490,9 @@ def keyboard_payment_cancel():
                 InlineKeyboardButton(
                     text="🎁 Подарить подписку",
                     callback_data="start_gift",
-                    style=STYLE_SUCCESS,
                 )
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")],
         ]
     )
     return keyboard
@@ -446,10 +500,10 @@ def keyboard_payment_cancel():
 
 def _sbp_callback_for_tarif(tarif: str) -> str:
     """7 / 30 / 365 — рекуррент Platega; подарки и прочие тарифы — разовый FreeKassa."""
-    if tarif.startswith('gift_'):
+    if tarif.startswith("gift_"):
         return f"wata_sbp_{tarif}"
-    duration_key = tarif.replace('r_', '').replace('old', '')
-    if duration_key in ('7', '30', '365'):
+    duration_key = tarif.replace("r_", "").replace("old", "")
+    if duration_key in ("7", "30", "365"):
         return f"platega_rec_{tarif}"
     return f"wata_sbp_{tarif}"
 
@@ -460,34 +514,28 @@ def keyboard_payment_method(tarif):
             InlineKeyboardButton(
                 text="⚡ СБП",
                 callback_data=_sbp_callback_for_tarif(tarif),
-                style=STYLE_SUCCESS,
             )
         ],
-    ]
-    rows.extend([
         [
             InlineKeyboardButton(
                 text="💳 Карта РФ",
                 callback_data=f"wata_card_{tarif}",
-                style=STYLE_PRIMARY,
             )
         ],
         [
             InlineKeyboardButton(
                 text="⭐️ Telegram Stars",
                 callback_data=f"stars_{tarif}",
-                style=STYLE_PRIMARY,
             )
         ],
         [
             InlineKeyboardButton(
                 text="💎 Crypto bot",
                 callback_data=f"crypto_{tarif}",
-                style=STYLE_PRIMARY,
             )
         ],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
-    ])
+        [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_buy_menu")],
+    ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -498,28 +546,24 @@ def keyboard_payment_method_stock(tarif):
                 InlineKeyboardButton(
                     text="⚡ СБП",
                     callback_data=f"wata_sbp_{tarif}",
-                    style=STYLE_SUCCESS,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="💳 Карта РФ",
                     callback_data=f"wata_card_{tarif}",
-                    style=STYLE_PRIMARY,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="⭐️ Telegram Stars",
                     callback_data=f"stars_{tarif}",
-                    style=STYLE_PRIMARY,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="💎 Crypto bot",
                     callback_data=f"crypto_{tarif}",
-                    style=STYLE_PRIMARY,
                 )
             ],
         ]
@@ -534,7 +578,6 @@ def keyboard_payment_sbp(text, pay_url):
                 InlineKeyboardButton(
                     text=text,
                     url=pay_url,
-                    style=STYLE_SUCCESS,
                 )
             ]
         ]
@@ -548,7 +591,6 @@ def keyboard_payment_stars(stars_amount):
                 InlineKeyboardButton(
                     text=f"Оплатить {stars_amount} ⭐️",
                     pay=True,
-                    style=STYLE_SUCCESS,
                 )
             ]
         ]
@@ -562,10 +604,9 @@ def ref_keyboard(user_id):
                 InlineKeyboardButton(
                     text="Пригласить друзей🫶",
                     url=f"https://t.me/share/url?url={BOT_URL}?start=ref{user_id}&text={urllib.parse.quote('Вот ссылка для тебя на надежный VPN!')}",
-                    style=STYLE_SUCCESS,
                 )
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_earn")],
         ]
     )
     return keyboard
@@ -576,7 +617,7 @@ def keyboard_inline_ref(user_id):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🌐 Подключить Ускоритель соцсетей",
+                    text="🔗 Подключить VPN",
                     url=f"{BOT_URL}?start=ref{user_id}",
                     style=STYLE_PRIMARY,
                 )
@@ -592,10 +633,9 @@ def keyboard_import_end(url_app: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="📥 Скачать приложение",
                     url=url_app,
-                    style=STYLE_PRIMARY,
                 )
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")],
+            [InlineKeyboardButton(text=BTN_BACK, callback_data="back_to_main")],
         ]
     )
 
@@ -603,24 +643,16 @@ def keyboard_import_end(url_app: str) -> InlineKeyboardMarkup:
 def keyboard_partner_intro():
     return create_kb(
         1,
-        styles={
-            "partner_create_link": STYLE_SUCCESS,
-            "back_to_main": STYLE_PRIMARY,
-        },
-        partner_create_link='🔗 Создать партнёрскую ссылку',
-        back_to_main='🔙 Назад',
+        partner_create_link="🔗 Создать партнёрскую ссылку",
+        back_to_earn=BTN_BACK,
     )
 
 
 def keyboard_partner_dashboard():
     return create_kb(
         1,
-        styles={
-            "partner_withdraw": STYLE_SUCCESS,
-            "back_to_main": STYLE_PRIMARY,
-        },
-        partner_withdraw='💰 Создать заявку на вывод',
-        back_to_main='🔙 Назад',
+        partner_withdraw="💰 Создать заявку на вывод",
+        back_to_earn=BTN_BACK,
     )
 
 
@@ -630,14 +662,12 @@ def keyboard_partner_withdraw(support_url: str):
             InlineKeyboardButton(
                 text="💬 Вывести деньги",
                 url=support_url,
-                style=STYLE_SUCCESS,
             )
         ],
         [
             InlineKeyboardButton(
-                text="🔙 Назад",
+                text=BTN_BACK,
                 callback_data="partner_earn",
-                style=STYLE_PRIMARY,
             )
         ],
     ])
@@ -649,7 +679,6 @@ def keyboard_discount_push_reveal() -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="🎁 Узнать награду",
                 callback_data="dpush_reveal",
-                style=STYLE_PRIMARY,
             )
         ],
     ])
@@ -661,7 +690,6 @@ def keyboard_discount_push_buy() -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="⚡ Купить со скидкой",
                 callback_data="dpush_buy",
-                style=STYLE_PRIMARY,
             )
         ],
     ])
@@ -671,13 +699,6 @@ def keyboard_discount_push_tariffs() -> InlineKeyboardMarkup:
     p = dct_price_discount_33
     return create_kb(
         1,
-        styles={
-            "dpush_tariff_7": STYLE_PRIMARY,
-            "dpush_tariff_30": STYLE_PRIMARY,
-            "dpush_tariff_90": STYLE_SUCCESS,
-            "dpush_tariff_180": STYLE_SUCCESS,
-            "dpush_tariff_365": STYLE_SUCCESS,
-        },
         dpush_tariff_7=f'👌 7 дней — {p["7"]} руб',
         dpush_tariff_30=f'🤝 1 месяц — {p["30"]} руб',
         dpush_tariff_90=f'✅ 3 месяца — {p["90"]} руб (выгода −44%)',
@@ -692,33 +713,29 @@ def keyboard_discount_push_payment(duration: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="⚡ СБП",
                 callback_data=f"dpush_wata_sbp_{duration}",
-                style=STYLE_SUCCESS,
             )
         ],
         [
             InlineKeyboardButton(
                 text="💳 Карта РФ",
                 callback_data=f"dpush_wata_card_{duration}",
-                style=STYLE_PRIMARY,
             )
         ],
         [
             InlineKeyboardButton(
                 text="⭐️ Telegram Stars",
                 callback_data=f"dpush_stars_{duration}",
-                style=STYLE_PRIMARY,
             )
         ],
         [
             InlineKeyboardButton(
                 text="💎 Crypto bot",
                 callback_data=f"dpush_crypto_{duration}",
-                style=STYLE_PRIMARY,
             )
         ],
         [
             InlineKeyboardButton(
-                text="🔙 Назад",
+                text=BTN_BACK,
                 callback_data="dpush_back_tariffs",
             )
         ],
@@ -726,20 +743,11 @@ def keyboard_discount_push_payment(duration: str) -> InlineKeyboardMarkup:
 
 
 def keyboard_profile(*, has_active_autopay: bool = False) -> InlineKeyboardMarkup:
-    buttons: dict[str, str] = {WL_TRAFFIC_BUY_CB: "📦 Купить трафик"}
-    styles: dict[str, str] = {
-        WL_TRAFFIC_BUY_CB: STYLE_SUCCESS,
-        "back_to_main": STYLE_PRIMARY,
-    }
-    if has_active_autopay:
-        buttons[CANCEL_AUTOPAY_CB] = "Отключить автоплатежи"
-        styles[CANCEL_AUTOPAY_CB] = STYLE_DANGER
-    buttons["back_to_main"] = BTN_BACK
-    return create_kb(1, styles=styles, **buttons)
+    return keyboard_subscription_manage("", has_active_autopay=has_active_autopay)
 
 
 def keyboard_wl_traffic_tariffs(*, back_callback: str = "back_to_main") -> InlineKeyboardMarkup:
-    from_sub = back_callback == BUY_VPN_CB
+    from_sub = back_callback in (BUY_VPN_CB, "buy_vpn_self")
     buttons = []
     for gb, price in sorted(WL_TRAFFIC_TARIFFS.items(), key=lambda item: int(item[0]), reverse=True):
         cb = f"wl_traffic_sub_{gb}" if from_sub else f"wl_traffic_{gb}"
@@ -747,7 +755,6 @@ def keyboard_wl_traffic_tariffs(*, back_callback: str = "back_to_main") -> Inlin
             InlineKeyboardButton(
                 text=f"{gb} GB — {price} ₽",
                 callback_data=cb,
-                style=STYLE_SUCCESS if gb in ("50", "100", "250", "500") else STYLE_PRIMARY,
             )
         ])
     buttons.append([InlineKeyboardButton(text=BTN_BACK, callback_data=back_callback)])
@@ -760,30 +767,25 @@ def keyboard_wl_traffic_payment_method(mb: str, *, back_callback: str = WL_TRAFF
             InlineKeyboardButton(
                 text="⚡ СБП",
                 callback_data=f"wl_traffic_sbp_{mb}",
-                style=STYLE_SUCCESS,
             )
         ],
         [
             InlineKeyboardButton(
                 text="💳 Карта РФ",
                 callback_data=f"wl_traffic_card_{mb}",
-                style=STYLE_PRIMARY,
             )
         ],
         [
             InlineKeyboardButton(
                 text="⭐️ Telegram Stars",
                 callback_data=f"wl_traffic_stars_{mb}",
-                style=STYLE_PRIMARY,
             )
         ],
         [
             InlineKeyboardButton(
                 text="💎 Crypto bot",
                 callback_data=f"wl_traffic_crypto_{mb}",
-                style=STYLE_PRIMARY,
             )
         ],
         [InlineKeyboardButton(text=BTN_BACK, callback_data=back_callback)],
     ])
-

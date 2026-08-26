@@ -60,7 +60,6 @@ _ADD7ALL_PROMO_TEXT = '''
 
 _ADD7ALL_TRIAL_KB = create_kb(
     1,
-    styles={"trial_return_get": STYLE_SUCCESS},
     trial_return_get="🔥Получить ТРИАЛ",
 )
 
@@ -105,7 +104,6 @@ _ADD2BONUS_KB = InlineKeyboardMarkup(
             InlineKeyboardButton(
                 text="⚠️ Если страница не загружается",
                 callback_data="import",
-                style=STYLE_DANGER,
             )
         ]
     ]
@@ -693,7 +691,7 @@ async def sync_panel(message: Message):
                                reply_markup=create_kb(
                                    1,
                                    styles={'connect_vpn': STYLE_PRIMARY},
-                                   connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                                   connect_vpn='🔗 Подключить VPN',
                                ))
 
     for user_id in users_for_sync:
@@ -725,7 +723,7 @@ async def sync_panel(message: Message):
                                        reply_markup=create_kb(
                                            1,
                                            styles={'connect_vpn': STYLE_PRIMARY},
-                                           connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                                           connect_vpn='🔗 Подключить VPN',
                                        ))
             else:
                 not_found += 1
@@ -1118,12 +1116,9 @@ async def send_gift_command(message: Message):
                                    gift_text,
                                    reply_markup=create_kb(
                                        1,
-                                       styles={
-                                           'video_faq': STYLE_PRIMARY,
-                                           'connect_vpn': STYLE_PRIMARY,
-                                       },
+                                       styles={'connect_vpn': STYLE_PRIMARY},
                                        video_faq='🎥 Видеоинструкция',
-                                       connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                                       connect_vpn='🔗 Подключить VPN',
                                    ))
             # Добавляем 3 дня подписки
             result = await x3.updateClient(5, str(user_id), user_id)
@@ -2001,12 +1996,9 @@ async def send_push_command(message: Message):
                                    push_text,
                                    reply_markup=create_kb(
                                        1,
-                                       styles={
-                                           'video_faq': STYLE_PRIMARY,
-                                           'connect_vpn': STYLE_PRIMARY,
-                                       },
+                                       styles={'connect_vpn': STYLE_PRIMARY},
                                        video_faq='🎥 Видеоинструкция',
-                                       connect_vpn='🌐 Подключить Ускоритель соцсетей',
+                                       connect_vpn='🔗 Подключить VPN',
                                    ))
             success_count += 1
             logger.info(f"Push отправлен пользователю {user_id}")

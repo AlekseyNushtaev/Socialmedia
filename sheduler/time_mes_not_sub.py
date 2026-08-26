@@ -4,7 +4,7 @@ from typing import Optional
 
 from bot import bot, sql
 from config import CHECKER_ID
-from keyboard import create_kb, STYLE_PRIMARY, STYLE_SUCCESS
+from keyboard import create_kb, STYLE_PRIMARY
 from lexicon import lexicon
 from logging_config import logger
 from telegram_ids import is_telegram_chat_id
@@ -79,31 +79,27 @@ def _keyboard_for(stage: PushStage):
     if stage.keyboard == 'free_green':
         return create_kb(
             1,
-            styles={'free_vpn': STYLE_SUCCESS},
             free_vpn='✨ Попробовать бесплатно',
         )
     if stage.keyboard == 'buy_free':
         return create_kb(
             1,
-            styles={'buy_vpn': STYLE_PRIMARY, 'free_vpn': STYLE_SUCCESS},
+            styles={'buy_vpn': STYLE_PRIMARY},
             buy_vpn='💰 Купить подписку',
             free_vpn='✨ Попробовать бесплатно',
         )
     if stage.keyboard == 'connect_mes':
         return create_kb(
             1,
-            styles={
-                'connect_vpn': STYLE_PRIMARY,
-                'video_faq': STYLE_PRIMARY,
-            },
-            connect_vpn='🌐 Подключить Ускоритель соцсетей',
+            styles={'connect_vpn': STYLE_PRIMARY},
+            connect_vpn='🔗 Подключить VPN',
             video_faq='🎥 Видеоинструкция',
         )
     if stage.keyboard == 'connect_video':
         return create_kb(
             1,
             styles={'connect_vpn': STYLE_PRIMARY},
-            connect_vpn='🌐 Подключить Ускоритель соцсетей',
+            connect_vpn='🔗 Подключить VPN',
         )
     return None
 

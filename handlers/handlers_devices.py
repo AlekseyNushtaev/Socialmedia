@@ -13,10 +13,9 @@ from keyboard import (
     keyboard_devices_confirm,
     keyboard_devices_list,
     keyboard_devices_subscriptions,
-    keyboard_start,
 )
-from lexicon import lexicon
 from logging_config import logger
+from utils.menu_ui import edit_or_send_photo
 
 router = Router()
 
@@ -85,6 +84,14 @@ def _no_subscriptions_text() -> str:
     return "У вас нет активных подписок"
 
 
+async def _edit_devices_screen(
+    callback: CallbackQuery,
+    text: str,
+    reply_markup: InlineKeyboardMarkup,
+) -> None:
+    await edit_or_send_photo(callback, "manage_devices", text, reply_markup)
+
+
 async def _devices_screen_text(
     label: str,
     user_uuid: str,
@@ -125,15 +132,17 @@ async def _devices_screen_text(
 async def _show_subscriptions(callback: CallbackQuery) -> None:
     slots = await _active_slots(callback.from_user.id)
     if not slots:
-        await callback.message.edit_text(
-            text=_no_subscriptions_text(),
-            reply_markup=keyboard_devices_subscriptions([]),
+        await _edit_devices_screen(
+            callback,
+            _no_subscriptions_text(),
+            keyboard_devices_subscriptions([]),
         )
         return
 
-    await callback.message.edit_text(
-        text=_subscriptions_text(),
-        reply_markup=keyboard_devices_subscriptions(
+    await _edit_devices_screen(
+        callback,
+        _subscriptions_text(),
+        keyboard_devices_subscriptions(
             [(slot_key, label) for slot_key, label, _uuid in slots]
         ),
     )
@@ -155,42 +164,28 @@ async def _show_devices(callback: CallbackQuery, slot_key: str) -> None:
                 [InlineKeyboardButton(text=BTN_BACK, callback_data="dev_back_subs")]
             ]
         )
-        await callback.message.edit_text(text=text, reply_markup=markup)
+        await _edit_devices_screen(callback, text, markup)
         return
 
-    await callback.message.edit_text(
-        text=text,
-        reply_markup=keyboard_devices_list(slot_key, btn_rows),
+    await _edit_devices_screen(
+        callback,
+        text,
+        keyboard_devices_list(slot_key, btn_rows),
     )
 
 
 @router.callback_query(F.data == "manage_devices")
 async def manage_devices_entry(callback: CallbackQuery) -> None:
     await callback.answer()
-    slots = await _active_slots(callback.from_user.id)
-    if not slots:
-        await callback.message.answer(
-            text=_no_subscriptions_text(),
-            reply_markup=keyboard_devices_subscriptions([]),
-        )
-        return
-
-    await callback.message.answer(
-        text=_subscriptions_text(),
-        reply_markup=keyboard_devices_subscriptions(
-            [(slot_key, label) for slot_key, label, _uuid in slots]
-        ),
-    )
+    await _show_subscriptions(callback)
 
 
 @router.callback_query(F.data == "dev_back_main")
 async def devices_back_to_main(callback: CallbackQuery) -> None:
     await callback.answer()
-    await callback.message.edit_text(
-        text=lexicon["start"],
-        reply_markup=keyboard_start(),
-        disable_web_page_preview=True,
-    )
+    from utils.menu_ui import show_main_menu
+
+    await show_main_menu(callback)
 
 
 @router.callback_query(F.data == "dev_back_subs")
@@ -253,9 +248,10 @@ async def devices_delete_confirm(callback: CallbackQuery) -> None:
     device_name = _device_display_name(device)
 
     await callback.answer()
-    await callback.message.edit_text(
-        text=_delete_confirm_text(label, device_name),
-        reply_markup=keyboard_devices_confirm(slot_key, device_idx),
+    await _edit_devices_screen(
+        callback,
+        _delete_confirm_text(label, device_name),
+        keyboard_devices_confirm(slot_key, device_idx),
     )
 
 
@@ -298,10 +294,11 @@ async def devices_delete_device(callback: CallbackQuery) -> None:
                 [InlineKeyboardButton(text=BTN_BACK, callback_data="dev_back_subs")]
             ]
         )
-        await callback.message.edit_text(text=text, reply_markup=markup)
+        await _edit_devices_screen(callback, text, markup)
         return
 
-    await callback.message.edit_text(
-        text=text,
-        reply_markup=keyboard_devices_list(slot_key, btn_rows),
+    await _edit_devices_screen(
+        callback,
+        text,
+        keyboard_devices_list(slot_key, btn_rows),
     )
