@@ -91,6 +91,7 @@ def _payment_method_label(raw: Optional[str]) -> str:
         "fk_qr_card": "FreeKassa карта",
         "stars": "Stars",
         "cryptobot": "CryptoBot",
+        "platega_rec": "Platega СБП автоплатёж",
     }
     return labels.get(key, raw.strip())
 
@@ -2306,7 +2307,8 @@ class AsyncSQL:
         self, user_id: int
     ) -> List[Tuple[datetime, str, str, str]]:
         """
-        Успешные платежи пользователя (confirmed/paid) по всем таблицам оплат.
+        Успешные платежи пользователя (confirmed/paid) по всем таблицам оплат,
+        включая подтверждённые рекуррентные списания Platega (CONFIRMED).
         Возвращает список (time_created, тип, способ оплаты, детали: период тарифа или «N GB»).
         """
         rows_acc: List[Tuple[datetime, str, str, str]] = []
@@ -2448,6 +2450,18 @@ class AsyncSQL:
                 for _uid, tc, amt, pl, ig in (await session.execute(q)).all():
                     kind, method, detail = _row_report_fields(pl, bool(ig), amt)
                     rows_acc.append((tc, kind, method, detail))
+
+            rec_q = select(
+                PlategaRecurent.time_created,
+                PlategaRecurent.amount,
+                PlategaRecurent.payload,
+            ).where(
+                PlategaRecurent.user_id == user_id,
+                PlategaRecurent.status == "CONFIRMED",
+            )
+            for tc, amt, pl in (await session.execute(rec_q)).all():
+                kind, method, detail = _row_report_fields(pl, False, amt)
+                rows_acc.append((tc, kind, method, detail))
 
         rows_acc.sort(key=lambda x: (x[0], x[1]))
         return rows_acc
