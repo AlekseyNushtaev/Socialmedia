@@ -189,6 +189,7 @@ async def _cancel_platega_autopay_row(
     )
     reason_labels = {
         'user_command': 'команда /sub',
+        'admin_sub': 'команда /sub (админ)',
         'user_profile': 'кнопка в профиле',
         'manual_payment': 'разовая оплата подписки',
         'new_recurrent': 'новый автоплатёж (первое списание)',

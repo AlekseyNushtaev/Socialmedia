@@ -22,6 +22,7 @@ from handlers.handlers_broadcast import BroadcastState
 from sheduler.check_connect import check_connect
 from sheduler.check_fk import fetch_fk_payment_check_status
 from payments.pay_freekassa import FreekassaPayment
+from payments.platega_recurrent import cancel_user_autopay
 from telegram_ids import is_telegram_chat_id
 from X3 import panel_username_for_site_user
 from wl_traffic.service import (
@@ -428,7 +429,6 @@ async def partner_remove_command(message: Message):
 async def set_subscription_date(message: Message):
     """Установка subscription_end_date или white_subscription_end_date в БД и панели"""
     if message.from_user.id not in ADMIN_IDS:
-        await message.answer("❌ Эта команда доступна только администраторам.")
         return
 
     try:
@@ -495,6 +495,12 @@ async def set_subscription_date(message: Message):
         else:
             await sql.update_subscription_end_date(user_id, actual_date)
 
+        autopay_cancelled = await cancel_user_autopay(user_id, reason='admin_sub')
+        if autopay_cancelled:
+            autopay_status = "\n🛑 Автоплатёж СБП отменён."
+        else:
+            autopay_status = "\nℹ️ Активного автоплатежа СБП не было."
+
         tier = "white" if is_white else "main"
         notify_status = ""
         if is_telegram_chat_id(user_id):
@@ -525,6 +531,7 @@ async def set_subscription_date(message: Message):
             f"📅 Установленная в панели дата (UTC): {actual_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"📝 Тип: {_SUB_TIER_LABELS.get(tier, tier)}\n"
             f"💾 База данных обновлена."
+            f"{autopay_status}"
             f"{notify_status}"
         )
 

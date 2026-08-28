@@ -1,39 +1,18 @@
 """Telegram-бот: рекуррентные СБП-подписки Platega."""
 from aiogram import Router, F
-from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery
 
-from bot import sql
 from config import ADMIN_IDS, PLATEGA_API_KEY, PLATEGA_MERCHANT_ID
 from keyboard import BTN_BACK, create_kb, keyboard_payment_sbp
 from lexicon import dct_desc, dct_price, lexicon
 from logging_config import logger
 from payments.payload_source import BOT
-from payments.platega_recurrent import cancel_user_autopay, create_recurrent_payment, is_recurrent_tariff
+from payments.platega_recurrent import create_recurrent_payment, is_recurrent_tariff
 from wl_traffic.texts import format_pro_payment_link
-from payments.tariff_gate import panel_days_from_tariff_key, tariff_key_from_callback, tariff_period_label
+from payments.tariff_gate import panel_days_from_tariff_key, tariff_key_from_callback
 from utils.menu_ui import edit_or_send_photo
 
 router = Router()
-
-
-@router.message(Command(commands=['sub']))
-async def cmd_cancel_autopay(message: Message):
-    """Отмена автоплатежа Platega СБП у клиента."""
-    user_id = message.from_user.id
-    active = await sql.get_active_platega_autopay(user_id)
-    if not active:
-        await message.answer(lexicon['autopay_cancel_none'], reply_markup=create_kb(1, back_to_main=BTN_BACK))
-        return
-    cancelled = await cancel_user_autopay(user_id, reason='user_command')
-    if cancelled:
-        period = tariff_period_label(panel_days_from_tariff_key(active.duration))
-        await message.answer(
-            lexicon['autopay_cancel_ok'].format(period),
-            reply_markup=create_kb(1, back_to_main=BTN_BACK),
-        )
-    else:
-        await message.answer(lexicon['autopay_cancel_none'], reply_markup=create_kb(1, back_to_main=BTN_BACK))
 
 
 @router.callback_query(F.data.startswith('platega_rec_'))
