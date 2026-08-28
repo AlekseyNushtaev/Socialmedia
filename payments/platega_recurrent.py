@@ -192,7 +192,9 @@ async def _cancel_platega_autopay_row(
         'admin_sub': 'команда /sub (админ)',
         'user_profile': 'кнопка в профиле',
         'manual_payment': 'разовая оплата подписки',
-        'new_recurrent': 'новый автоплатёж (первое списание)',
+        'new_recurrent': 'новый автоплатёж (успешное списание)',
+        'replaced_pending': 'замена неоплаченной заявки',
+        'superseded': 'есть более новая успешная подписка',
         'manual': 'вручную',
         'provider_cancelled': 'отмена у провайдера',
     }
@@ -206,12 +208,67 @@ async def _cancel_platega_autopay_row(
     return True
 
 
-async def cancel_superseded_autopays(user_id: int, keep_subscription_id: str) -> None:
-    """Отменяет другие автоподписки пользователя после успешной активации новой."""
+def _autopay_created_at(row) -> datetime:
+    return row.time_created or datetime.min
+
+
+async def _cancel_other_pending_autopays(user_id: int, keep_subscription_id: str) -> None:
+    """Снимает старые неоплаченные заявки, активную успешную не трогает."""
     rows = await sql.list_active_platega_autopays(user_id)
     for row in rows:
-        if row.subscription_id != keep_subscription_id:
+        if row.status == 'pending' and row.subscription_id != keep_subscription_id:
+            await _cancel_platega_autopay_row(row, reason='replaced_pending')
+
+
+async def enforce_latest_successful_autopay(user_id: int, candidate_id: str) -> bool:
+    """
+    В моменте живой только последний автоплатёж с успешным списанием/активацией.
+    candidate — подписка, которая только что подтверждена.
+    Возвращает True, если candidate остаётся рабочей.
+    """
+    rows = await sql.list_active_platega_autopays(user_id)
+    candidate = next((r for r in rows if r.subscription_id == candidate_id), None)
+    if candidate is None:
+        candidate = await sql.get_platega_autopay_by_subscription_id(candidate_id)
+    if not candidate or candidate.status == 'cancelled':
+        return False
+
+    newer_successful = [
+        r for r in rows
+        if r.subscription_id != candidate_id
+        and r.status in ('active', 'past_due')
+        and _autopay_created_at(r) > _autopay_created_at(candidate)
+    ]
+    if newer_successful:
+        await _cancel_platega_autopay_row(candidate, reason='superseded')
+        logger.info(
+            'Autopay candidate is older than existing successful: user={} sub={}',
+            user_id, candidate_id,
+        )
+        return False
+
+    for row in rows:
+        if row.subscription_id != candidate_id:
             await _cancel_platega_autopay_row(row, reason='new_recurrent')
+
+    live = await sql.list_active_platega_autopays(user_id)
+    others_successful = [
+        r for r in live
+        if r.subscription_id != candidate_id and r.status in ('active', 'past_due')
+    ]
+    if others_successful:
+        newest = max(others_successful, key=_autopay_created_at)
+        if _autopay_created_at(newest) > _autopay_created_at(candidate):
+            await _cancel_platega_autopay_row(candidate, reason='superseded')
+            return False
+        for extra in others_successful:
+            await _cancel_platega_autopay_row(extra, reason='new_recurrent')
+    return True
+
+
+async def cancel_superseded_autopays(user_id: int, keep_subscription_id: str) -> None:
+    """Отменяет другие автоподписки, если keep — последняя успешная."""
+    await enforce_latest_successful_autopay(user_id, keep_subscription_id)
 
 
 async def cancel_user_autopay(
@@ -281,6 +338,7 @@ async def create_recurrent_payment(
         white=white,
         source=source,
     )
+    await _cancel_other_pending_autopays(user_id, keep_subscription_id=subscription_id)
     logger.info(
         'Platega recurrent created user={} sub={} duration={} amount={}',
         user_id, subscription_id, duration, amount,
@@ -315,6 +373,13 @@ async def handle_subscription_status_webhook(data: Dict[str, Any]) -> None:
         logger.warning('Platega status webhook unknown sub={}', subscription_id)
         return
 
+    if row.status == 'cancelled':
+        logger.info(
+            'Platega status webhook ignored (already cancelled): sub={} status={}',
+            subscription_id, status_raw,
+        )
+        return
+
     prev_status = row.status
     cancel_reason = 'provider_cancelled' if mapped == 'cancelled' else None
     await sql.update_platega_autopay_status(
@@ -327,6 +392,15 @@ async def handle_subscription_status_webhook(data: Dict[str, Any]) -> None:
 
     if mapped == 'cancelled' and prev_status == 'cancelled':
         return
+
+    if mapped == 'active':
+        is_latest = await enforce_latest_successful_autopay(int(row.user_id), subscription_id)
+        if not is_latest:
+            logger.info(
+                'Platega activation ignored (not latest successful): user={} sub={}',
+                row.user_id, subscription_id,
+            )
+            return
 
     status_labels = {
         'active': '✅ активирована',
@@ -392,20 +466,25 @@ async def handle_subscription_charge_webhook(data: Dict[str, Any]) -> None:
         logger.info('Platega charge webhook duplicate processed tx={}', transaction_id)
         return
 
-    if next_charge_at:
-        await sql.update_platega_autopay_status(
-            subscription_id, 'active', next_charge_at=next_charge_at,
-        )
-
     if status_raw == 'CONFIRMED':
-        is_first_charge = not await sql.platega_recurent_has_confirmed(subscription_id)
+        is_latest = await enforce_latest_successful_autopay(int(autopay.user_id), subscription_id)
+        if not is_latest:
+            logger.info(
+                'Platega charge ignored (not latest successful): user={} sub={} tx={}',
+                autopay.user_id, subscription_id, transaction_id,
+            )
+            return
+
+        if next_charge_at:
+            await sql.update_platega_autopay_status(
+                subscription_id, 'active', next_charge_at=next_charge_at,
+            )
+
         pay_payload = autopay.payload or str(payload_from_hook or '')
         if pay_payload:
             ok = await process_confirmed_payment(pay_payload)
             if ok:
                 await sql.mark_platega_recurent_processed(transaction_id)
-                if is_first_charge:
-                    await cancel_superseded_autopays(int(autopay.user_id), subscription_id)
                 logger.info(
                     'Platega recurrent charge applied user={} tx={} amount={}',
                     autopay.user_id, transaction_id, amount,

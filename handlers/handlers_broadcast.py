@@ -14,7 +14,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from bot import sql
+from bot import sql, x3
 from config import ADMIN_IDS, BOT_URL, CHECKER_ID
 from keyboard import (
     BTN_BACK,
@@ -43,6 +43,7 @@ CB_PIN = "bcpin:"
 BCBTN = "bcbtn:"
 BCACT = "bcact:"
 BCST = "bcst:"
+BC_SHOW_SUBS_CB = "bc_show_subs"
 
 LINK_STYLE_LABELS = {
     "primary": "Основной (синий)",
@@ -73,7 +74,7 @@ SCOPE_LABEL = {
 CUSTOM_PRESETS = [
     ("free_vpn", "free_vpn", "✨ Попробовать бесплатно", None),
     ("buy_vpn", "buy_vpn", "💰 Купить подписку", STYLE_PRIMARY),
-    ("connect_vpn", "connect_vpn", "🔗 Подключить VPN", STYLE_PRIMARY),
+    ("connect_vpn", BC_SHOW_SUBS_CB, "🔗 Подключить VPN", STYLE_PRIMARY),
     ("ref", "ref", "👭 Реферальная программа", None),
     ("buy_gift", "buy_gift", "🎁 Подарить подписку", None),
     ("ref_invite", "ref_invite", "Пригласить друзей🫶", None),
@@ -209,7 +210,10 @@ def _format_kb_spec_lines(spec: list) -> str:
     lines = []
     for i, entry in enumerate(spec, start=1):
         if entry["kind"] == "cb":
-            lines.append(f"{i}. {entry['text']} (callback: {entry['cb']})")
+            if entry.get("cb") == BC_SHOW_SUBS_CB:
+                lines.append(f"{i}. {entry['text']} (ссылки активных подписок)")
+            else:
+                lines.append(f"{i}. {entry['text']} (callback: {entry['cb']})")
         else:
             st = entry.get("style")
             if st == STYLE_PRIMARY:
@@ -261,6 +265,29 @@ def _build_custom_reply_markup(spec: list, target_user_id: int) -> InlineKeyboar
             if st:
                 kw["style"] = st
             rows.append([InlineKeyboardButton(**kw)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _active_sub_links_markup(user_id: int) -> InlineKeyboardMarkup | None:
+    slots = await x3.active_subscription_slots(user_id)
+    if not slots:
+        return None
+    rows: list[list[InlineKeyboardButton]] = []
+    for _slot_key, label, _panel_id, username in slots:
+        url = await x3.sublink(username)
+        if not url:
+            continue
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=label,
+                    url=url,
+                    style=STYLE_PRIMARY,
+                )
+            ]
+        )
+    if not rows:
+        return None
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -690,3 +717,27 @@ async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
             await callback.message.delete()
         except Exception:
             await callback.message.answer("Рассылка отменена.")
+
+
+@router.callback_query(F.data == BC_SHOW_SUBS_CB)
+async def broadcast_show_active_subs(callback: CallbackQuery):
+    """Под рассылкой: заменить кнопки на ссылки всех активных подписок."""
+    if callback.message is None:
+        await callback.answer()
+        return
+    markup = await _active_sub_links_markup(callback.from_user.id)
+    if markup is None:
+        await callback.answer("Нет активной подписки", show_alert=True)
+        return
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=markup)
+    except Exception as e:
+        logger.warning("bc_show_subs: edit_reply_markup failed: {}", e)
+        try:
+            await callback.message.answer(
+                "Ваши ссылки для подключения:",
+                reply_markup=markup,
+            )
+        except Exception as send_err:
+            logger.error("bc_show_subs: fallback send failed: {}", send_err)

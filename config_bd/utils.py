@@ -2564,8 +2564,10 @@ class AsyncSQL:
             stmt = (
                 update(PlategaAutopaySubscription)
                 .where(PlategaAutopaySubscription.subscription_id == subscription_id)
-                .values(**values)
             )
+            if status != 'cancelled':
+                stmt = stmt.where(PlategaAutopaySubscription.status != 'cancelled')
+            stmt = stmt.values(**values)
             await session.execute(stmt)
             await session.commit()
 
