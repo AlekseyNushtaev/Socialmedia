@@ -2242,6 +2242,105 @@ class AsyncSQL:
             "platega_recurent": platega_recurent_list,
         }
 
+    async def get_trafic_stat_source(
+        self,
+    ) -> Tuple[
+        List[Tuple[int, Optional[int], Optional[datetime], float, float]],
+        List[Tuple[int, datetime, Any, Optional[str], bool, str, Optional[str]]],
+    ]:
+        """
+        Данные для /trafic_stat.
+        users: (user_id, linked_telegram_id, subscription_end_date, trafic_wl, limit_wl)
+        payments: (user_id, time_created, amount, payload, is_gift, channel, currency)
+        channel: rub | stars | cryptobot. Успешные платежи (confirmed/paid/CONFIRMED).
+        Активная подписка сейчас, trafic_wl > 7 ГБ, без тарифа «Навсегда».
+        """
+        from wl_traffic.constants import FOREVER_END_CUTOFF
+
+        users_rows: List[Tuple[int, Optional[int], Optional[datetime], float, float]] = []
+        pay_rows: List[Tuple[int, datetime, Any, Optional[str], bool, str, Optional[str]]] = []
+        now = datetime.now()
+
+        async with self.session_factory() as session:
+            uq = select(
+                Users.user_id,
+                Users.linked_telegram_id,
+                Users.subscription_end_date,
+                Users.trafic_wl,
+                Users.limit_wl,
+            ).where(
+                Users.is_delete == False,
+                Users.subscription_end_date.isnot(None),
+                Users.subscription_end_date > now,
+                Users.subscription_end_date < FOREVER_END_CUTOFF,
+                Users.trafic_wl > 7,
+            )
+            for uid, linked, end_dt, trafic, limit_wl in (await session.execute(uq)).all():
+                users_rows.append((
+                    int(uid),
+                    int(linked) if linked is not None else None,
+                    end_dt,
+                    float(trafic or 0.0),
+                    float(limit_wl or 0.0),
+                ))
+
+            rub_queries = (
+                select(
+                    Payments.user_id, Payments.time_created, Payments.amount,
+                    Payments.payload, Payments.is_gift,
+                ).where(Payments.status.in_(_BILLING_OK_STATUSES)),
+                select(
+                    PaymentsCards.user_id, PaymentsCards.time_created, PaymentsCards.amount,
+                    PaymentsCards.payload, PaymentsCards.is_gift,
+                ).where(PaymentsCards.status.in_(_BILLING_OK_STATUSES)),
+                select(
+                    PaymentsPlategaCrypto.user_id, PaymentsPlategaCrypto.time_created,
+                    PaymentsPlategaCrypto.amount, PaymentsPlategaCrypto.payload,
+                    PaymentsPlategaCrypto.is_gift,
+                ).where(PaymentsPlategaCrypto.status.in_(_BILLING_OK_STATUSES)),
+                select(
+                    PaymentsWataSBP.user_id, PaymentsWataSBP.time_created, PaymentsWataSBP.amount,
+                    PaymentsWataSBP.payload, PaymentsWataSBP.is_gift,
+                ).where(PaymentsWataSBP.status.in_(_BILLING_OK_STATUSES)),
+                select(
+                    PaymentsWataCard.user_id, PaymentsWataCard.time_created, PaymentsWataCard.amount,
+                    PaymentsWataCard.payload, PaymentsWataCard.is_gift,
+                ).where(PaymentsWataCard.status.in_(_BILLING_OK_STATUSES)),
+                select(
+                    PaymentsFkSBP.user_id, PaymentsFkSBP.time_created, PaymentsFkSBP.amount,
+                    PaymentsFkSBP.payload, PaymentsFkSBP.is_gift,
+                ).where(PaymentsFkSBP.status.in_(_BILLING_OK_STATUSES)),
+            )
+            for q in rub_queries:
+                for uid, tc, amt, pl, ig in (await session.execute(q)).all():
+                    pay_rows.append((int(uid), tc, amt, pl, bool(ig), "rub", None))
+
+            q_stars = select(
+                PaymentsStars.user_id, PaymentsStars.time_created, PaymentsStars.amount,
+                PaymentsStars.payload, PaymentsStars.is_gift,
+            ).where(PaymentsStars.status.in_(_BILLING_OK_STATUSES))
+            for uid, tc, amt, pl, ig in (await session.execute(q_stars)).all():
+                pay_rows.append((int(uid), tc, amt, pl, bool(ig), "stars", None))
+
+            q_crypto = select(
+                PaymentsCryptobot.user_id, PaymentsCryptobot.time_created, PaymentsCryptobot.amount,
+                PaymentsCryptobot.payload, PaymentsCryptobot.is_gift, PaymentsCryptobot.currency,
+            ).where(PaymentsCryptobot.status.in_(_BILLING_OK_STATUSES))
+            for uid, tc, amt, pl, ig, cur in (await session.execute(q_crypto)).all():
+                pay_rows.append((
+                    int(uid), tc, amt, pl, bool(ig), "cryptobot",
+                    str(cur) if cur else None,
+                ))
+
+            q_rec = select(
+                PlategaRecurent.user_id, PlategaRecurent.time_created, PlategaRecurent.amount,
+                PlategaRecurent.payload,
+            ).where(func.lower(PlategaRecurent.status).in_(_BILLING_OK_STATUSES))
+            for uid, tc, amt, pl in (await session.execute(q_rec)).all():
+                pay_rows.append((int(uid), tc, amt, pl, False, "rub", None))
+
+        return users_rows, pay_rows
+
     async def add_white_counter_if_not_exists(self, user_id: int) -> None:
         """
         Добавляет запись в white_counter, если её ещё нет для данного пользователя.
