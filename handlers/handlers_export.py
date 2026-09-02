@@ -11,14 +11,14 @@ from aiogram import F, Router
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 
 from bot import bot, sql, x3
-from config import ADMIN_IDS
+from config import ADMIN_IDS, MIRROR_SUB_LINK, TRUE_SUB_LINK
 from config_bd.models import Users
 from config_bd.utils import (
     _billing_duration_from_amount_fallback,
     _parse_traffic_duration,
     _payload_duration_to_panel_days,
 )
-from keyboard import STYLE_DANGER, STYLE_PRIMARY, STYLE_SUCCESS, create_kb
+from keyboard import STYLE_DANGER, STYLE_PRIMARY, STYLE_SUCCESS
 from logging_config import logger
 from aiogram.types import (
     CallbackQuery,
@@ -33,6 +33,7 @@ from wl_traffic.service import (
     fetch_panel_user,
     is_forever_duration,
     is_forever_end_date,
+    panel_username_for_billing_uid,
     reassign_to_active_squad,
     user_on_active_squad,
 )
@@ -621,11 +622,6 @@ _TRAFFIC_STAT_PROGRESS_EVERY = 50
 _TRAFFIC_STAT_PREVIEW_GB = 10
 _TRAFFIC_STAT_PENDING: dict[int, list[tuple[int, int, float]]] = {}
 _TRAFFIC_STAT_RUNNING: set[int] = set()
-_TRAFFIC_STAT_PUSH_KB = create_kb(
-    1,
-    styles={"connect_vpn": STYLE_PRIMARY},
-    connect_vpn="🔗 Подключить VPN",
-)
 _TRAFFIC_STAT_CONFIRM_KB = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -991,6 +987,40 @@ def _trafic_stat_push_text(gb: float) -> str:
     )
 
 
+def _mirror_sub_url(raw: Optional[str]) -> str:
+    if not raw:
+        return ""
+    return str(raw).replace(TRUE_SUB_LINK, MIRROR_SUB_LINK)
+
+
+def _trafic_stat_connect_kb(sub_url: str) -> Optional[InlineKeyboardMarkup]:
+    if not sub_url:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔗 Подключить VPN",
+                    url=sub_url,
+                    style=STYLE_PRIMARY,
+                )
+            ]
+        ]
+    )
+
+
+async def _trafic_stat_sub_url(
+    billing_uid: int,
+    panel_user: Optional[dict] = None,
+) -> str:
+    raw = (panel_user or {}).get("subscriptionUrl") or ""
+    url = _mirror_sub_url(raw)
+    if url:
+        return url
+    username = panel_username_for_billing_uid(billing_uid)
+    return (await x3.sublink(username)) or ""
+
+
 @router.message(Command(commands=["trafic_stat", "traffic_stat"]))
 async def trafic_stat_excel(message: Message):
     """Активные PRO без «Навсегда»: на 10.08 > 2 недель, trafic_wl > 7, без покупок трафика."""
@@ -1035,10 +1065,13 @@ async def trafic_stat_excel(message: Message):
 
         _TRAFFIC_STAT_PENDING[admin_id] = apply_rows
         n_push = sum(1 for _, tg_id, _gb in apply_rows if is_telegram_chat_id(tg_id))
+        preview_url = await _trafic_stat_sub_url(admin_id)
+        if not preview_url and apply_rows:
+            preview_url = await _trafic_stat_sub_url(apply_rows[0][0])
         await message.answer("Пример пуша (10 ГБ):")
         await message.answer(
             _trafic_stat_push_text(_TRAFFIC_STAT_PREVIEW_GB),
-            reply_markup=_TRAFFIC_STAT_PUSH_KB,
+            reply_markup=_trafic_stat_connect_kb(preview_url),
         )
         await message.answer(
             f"Разослать по выборке: <b>{n_rows}</b> чел. "
@@ -1144,10 +1177,11 @@ async def trafic_stat_confirm(callback: CallbackQuery):
                 continue
 
             try:
+                sub_url = await _trafic_stat_sub_url(billing_uid, panel_user)
                 await bot.send_message(
                     chat_id=tg_id,
                     text=_trafic_stat_push_text(recalc_gb),
-                    reply_markup=_TRAFFIC_STAT_PUSH_KB,
+                    reply_markup=_trafic_stat_connect_kb(sub_url),
                 )
                 pushed += 1
             except Exception as e:
