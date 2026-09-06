@@ -1,4 +1,5 @@
 import random
+import re
 import os
 import tempfile
 from datetime import datetime, date, timezone, timedelta
@@ -150,10 +151,29 @@ def _pay_panel_sub_line(activ_result: dict) -> str:
         return str(t)
 
 
+_ADMIN_CMD_LINE_RE = re.compile(
+    r"^/(?P<cmd>[A-Za-z0-9_]+)(?:@\w+)?(?:\s+(?P<spaced>.*)|(?P<glued>-.*))?$",
+    re.DOTALL,
+)
+
+
+def _admin_command_parts(text: Optional[str], command: str) -> Optional[list[str]]:
+    """Аргументы /cmd, включая отрицательный id без пробела: /pay-12, /sub-12 white ..."""
+    if not text:
+        return None
+    m = _ADMIN_CMD_LINE_RE.match(text.strip())
+    if not m or m.group("cmd").lower() != command.lower():
+        return None
+    rest = m.group("spaced") if m.group("spaced") is not None else (m.group("glued") or "")
+    return rest.split()
+
+
 def _panel_usernames_from_row(row: tuple) -> tuple[str, str]:
     """Пара username в панели: обычная, вайт (как в web_api._panel_vpn_usernames)."""
     tg_col = row[1]
     linked = row[28]
+    stamp = row[14]
+    field_str_2 = row[22]
     tg = None
     if tg_col is not None and int(tg_col) > 0:
         tg = int(tg_col)
@@ -162,8 +182,24 @@ def _panel_usernames_from_row(row: tuple) -> tuple[str, str]:
     if tg is not None:
         s = str(tg)
         return s, f"{s}_white"
+    if stamp == "gift" and field_str_2:
+        base = str(field_str_2).strip()
+        if base.endswith("_white"):
+            base = base[: -len("_white")]
+        return base, f"{base}_white"
     db_uid = int(tg_col)
     return panel_username_for_site_user(db_uid, False), panel_username_for_site_user(db_uid, True)
+
+
+def _notify_chat_id_from_row(row: tuple) -> Optional[int]:
+    """chat_id для ЛС: user_id Telegram или привязанный linked_telegram_id."""
+    tg_col = row[1]
+    linked = row[28]
+    if tg_col is not None and is_telegram_chat_id(tg_col):
+        return int(tg_col)
+    if linked is not None and is_telegram_chat_id(linked):
+        return int(linked)
+    return None
 
 
 def _split_long_text(text: str, limit: int = 3800) -> list[str]:
@@ -260,21 +296,25 @@ async def gift_info_command(message: Message):
         )
 
 
-@router.message(Command(commands=['pay']))
+@router.message(F.text.regexp(r"(?i)^/pay(?:@\w+)?(?:\s|$|-)"))
 async def pay_info_command(message: Message):
     """Сводка подписок (БД / панель) и успешные платежи пользователя."""
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    args = (message.text or "").split()
-    if len(args) < 2:
-        await message.answer("❌ Использование: /pay <telegram_id>\nНапример: /pay 123456789")
+    args = _admin_command_parts(message.text, "pay")
+    if args is None or len(args) < 1:
+        await message.answer(
+            "❌ Использование: /pay <telegram_id|site_id>\n"
+            "Например: /pay 123456789\n"
+            "Сайт (отрицательный id): /pay -12"
+        )
         return
 
     try:
-        target_id = int(args[1].strip())
+        target_id = int(args[0].strip())
     except ValueError:
-        await message.answer("❌ ID должен быть числом.")
+        await message.answer("❌ ID должен быть числом (для сайта — отрицательным, например -12).")
         return
 
     user_row = await sql.get_user(target_id)
@@ -425,35 +465,37 @@ async def partner_remove_command(message: Message):
         )
 
 
-@router.message(Command(commands=['sub']))
+@router.message(F.text.regexp(r"(?i)^/sub(?:@\w+)?(?:\s|$|-)"))
 async def set_subscription_date(message: Message):
     """Установка subscription_end_date или white_subscription_end_date в БД и панели"""
     if message.from_user.id not in ADMIN_IDS:
         return
 
     try:
-        args = message.text.split()
-        if len(args) < 3:
+        args = _admin_command_parts(message.text, "sub")
+        if args is None or len(args) < 2:
             await message.answer(
                 "❌ Использование:\n"
-                "  /sub <telegram_id> <дата_время>               – обновить обычную подписку\n"
-                "  /sub <telegram_id> white <дата_время>         – обновить белую подписку\n"
+                "  /sub <telegram_id|site_id> <дата_время>               – обновить обычную подписку\n"
+                "  /sub <telegram_id|site_id> white <дата_время>         – обновить белую подписку\n"
                 "Примеры:\n"
                 "  /sub 123456789 2026-02-01 17:14:27\n"
                 "  /sub 123456789 white 2026-02-01 17:14:27\n"
+                "  /sub -12 2026-02-01 17:14:27\n"
+                "  /sub -12 white 2026-02-01 17:14:27\n"
                 "Формат даты: YYYY-MM-DD HH:MM:SS"
             )
             return
 
-        user_id = int(args[1].strip())
+        user_id = int(args[0].strip())
 
         # Определяем тип и позицию даты
-        if args[2].lower() == 'white':
+        if args[1].lower() == 'white':
             is_white = True
-            date_str = " ".join(args[3:])
+            date_str = " ".join(args[2:])
         else:
             is_white = False
-            date_str = " ".join(args[2:])
+            date_str = " ".join(args[1:])
 
         # Парсим дату
         date_formats = [
@@ -480,8 +522,22 @@ async def set_subscription_date(message: Message):
             await message.answer("⚠️ Пользователь не найден в БД.")
             return
 
-        # Формируем username для панели
-        username = str(user_id) + ('_white' if is_white else '')
+        reg_un, white_un = _panel_usernames_from_row(user_data)
+        username = white_un if is_white else reg_un
+
+        # Сайт-клиент: если в панели ещё нет — создаём через add_client_site, не addClient.
+        if not is_telegram_chat_id(user_id):
+            existing = await x3.get_user_by_username(username)
+            if not existing or "response" not in existing or not existing["response"]:
+                email = user_data[18]
+                stamp = user_data[14]
+                if stamp != "gift" and email:
+                    created = await x3.add_client_site(0, str(email), is_white, user_id)
+                    if not created:
+                        await message.answer(
+                            "❌ Не удалось создать пользователя сайта в панели. Подробности в логах."
+                        )
+                        return
 
         # Устанавливаем дату в панели
         success, actual_date = await x3.set_expiration_date(username, target_date, user_id)
@@ -503,7 +559,8 @@ async def set_subscription_date(message: Message):
 
         tier = "white" if is_white else "main"
         notify_status = ""
-        if is_telegram_chat_id(user_id):
+        notify_chat_id = _notify_chat_id_from_row(user_data)
+        if notify_chat_id is not None:
             try:
                 sub_link = await x3.sublink(username)
                 user_text = lexicon["sub_granted_notify"].format(
@@ -511,7 +568,7 @@ async def set_subscription_date(message: Message):
                     end_date=_msk_dt_str(actual_date),
                 )
                 await bot.send_message(
-                    user_id,
+                    notify_chat_id,
                     user_text,
                     parse_mode="HTML",
                     disable_web_page_preview=True,
@@ -519,7 +576,7 @@ async def set_subscription_date(message: Message):
                 )
                 notify_status = "\n📨 Пользователь уведомлён."
             except Exception as e:
-                logger.error(f"/sub: не удалось уведомить user={user_id}: {e}")
+                logger.error(f"/sub: не удалось уведомить user={user_id} chat={notify_chat_id}: {e}")
                 notify_status = f"\n⚠️ Не удалось уведомить пользователя: {e}"
         else:
             notify_status = "\nℹ️ Уведомление не отправлено (не Telegram ID)."
@@ -527,12 +584,14 @@ async def set_subscription_date(message: Message):
         await message.answer(
             f"✅ Дата подписки успешно установлена!\n\n"
             f"👤 Пользователь: {user_id}\n"
+            f"🧩 Панель: <code>{username}</code>\n"
             f"📅 Целевая дата (UTC): {target_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"📅 Установленная в панели дата (UTC): {actual_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"📝 Тип: {_SUB_TIER_LABELS.get(tier, tier)}\n"
             f"💾 База данных обновлена."
             f"{autopay_status}"
-            f"{notify_status}"
+            f"{notify_status}",
+            parse_mode="HTML",
         )
 
     except Exception as e:
