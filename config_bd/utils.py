@@ -2424,13 +2424,14 @@ class AsyncSQL:
 
     async def get_user_subscription_payment_report(
         self, user_id: int
-    ) -> List[Tuple[datetime, str, str, str]]:
+    ) -> List[Tuple[datetime, str, str, str, str]]:
         """
         Успешные платежи пользователя (confirmed/paid) по всем таблицам оплат,
         включая подтверждённые рекуррентные списания Platega (CONFIRMED).
-        Возвращает список (time_created, тип, способ оплаты, детали: период тарифа или «N GB»).
+        Возвращает список (time_created, тип, способ оплаты, детали, transaction_id).
+        transaction_id заполнен только у автосписаний Platega.
         """
-        rows_acc: List[Tuple[datetime, str, str, str]] = []
+        rows_acc: List[Tuple[datetime, str, str, str, str]] = []
 
         def _parse_map(payload: Optional[str]) -> Dict[str, str]:
             if not payload:
@@ -2568,19 +2569,20 @@ class AsyncSQL:
             for q in queries:
                 for _uid, tc, amt, pl, ig in (await session.execute(q)).all():
                     kind, method, detail = _row_report_fields(pl, bool(ig), amt)
-                    rows_acc.append((tc, kind, method, detail))
+                    rows_acc.append((tc, kind, method, detail, ""))
 
             rec_q = select(
                 PlategaRecurent.time_created,
                 PlategaRecurent.amount,
                 PlategaRecurent.payload,
+                PlategaRecurent.transaction_id,
             ).where(
                 PlategaRecurent.user_id == user_id,
                 PlategaRecurent.status == "CONFIRMED",
             )
-            for tc, amt, pl in (await session.execute(rec_q)).all():
+            for tc, amt, pl, tx_id in (await session.execute(rec_q)).all():
                 kind, method, detail = _row_report_fields(pl, False, amt)
-                rows_acc.append((tc, kind, method, detail))
+                rows_acc.append((tc, kind, method, detail, str(tx_id or "").strip()))
 
         rows_acc.sort(key=lambda x: (x[0], x[1]))
         return rows_acc
