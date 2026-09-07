@@ -2002,7 +2002,26 @@ class AsyncSQL:
                 logger.error(f"❌ Ошибка создания подарка: {e}")
                 raise
 
-    async def add_online_stats(self, users_panel: int, users_active: int, users_pay: int, users_trial: int) -> None:
+    async def count_users_with_active_subscription(self) -> int:
+        """Число людей с хотя бы одной активной подпиской (end_date > now)."""
+        async with self.session_factory() as session:
+            now = datetime.now()
+            active_any = or_(
+                and_(Users.subscription_end_date.isnot(None), Users.subscription_end_date > now),
+                and_(Users.white_subscription_end_date.isnot(None), Users.white_subscription_end_date > now),
+            )
+            stmt = select(func.count()).select_from(Users).where(active_any)
+            result = await session.execute(stmt)
+            return int(result.scalar() or 0)
+
+    async def add_online_stats(
+        self,
+        users_panel: int,
+        users_active: int,
+        users_pay: int,
+        users_trial: int,
+        users_subscribed: int,
+    ) -> None:
         """
         Сохраняет ежедневную статистику онлайн-активности.
         """
@@ -2011,7 +2030,8 @@ class AsyncSQL:
                 users_panel=users_panel,
                 users_active=users_active,
                 users_pay=users_pay,
-                users_trial=users_trial
+                users_trial=users_trial,
+                users_subscribed=users_subscribed,
             )
             session.add(online_record)
             await session.commit()
@@ -2689,6 +2709,10 @@ class AsyncSQL:
                 )
             ).scalar_one_or_none()
             if existing:
+                if payload and not (existing.payload or "").strip():
+                    existing.payload = payload
+                    await session.commit()
+                    await session.refresh(existing)
                 return existing
             row = PlategaRecurent(
                 user_id=user_id,

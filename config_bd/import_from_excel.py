@@ -395,6 +395,7 @@ def _import_online(conn: sqlite3.Connection, df: pd.DataFrame) -> int:
         "Активны сегодня": "users_active",
         "Платных": "users_pay",
         "Триальных": "users_trial",
+        "С активной подпиской": "users_subscribed",
     }
     rows = []
     for rec in df.to_dict("records"):
@@ -406,9 +407,13 @@ def _import_online(conn: sqlite3.Connection, df: pd.DataFrame) -> int:
                 _to_int(rec["Активны сегодня"]),
                 _to_int(rec["Платных"]),
                 _to_int(rec["Триальных"]),
+                _to_bigint(rec.get("С активной подпиской")),
             )
         )
-    cols = ["online_id", "online_date", "users_panel", "users_active", "users_pay", "users_trial"]
+    cols = [
+        "online_id", "online_date", "users_panel", "users_active",
+        "users_pay", "users_trial", "users_subscribed",
+    ]
     return _bulk_insert(conn, "online", cols, rows, pk_col="online_id")
 
 

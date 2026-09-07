@@ -106,6 +106,26 @@ def build_recurrent_payload(
     )
 
 
+def _looks_like_payment_payload(raw: Any) -> bool:
+    text = str(raw or '').strip()
+    return bool(text) and 'user_id:' in text and 'duration:' in text
+
+
+def resolve_charge_payload(autopay, payload_from_hook: Any = None) -> str:
+    """Payload списания: webhook Platega → payload подписки → сборка из полей автоплатежа."""
+    if _looks_like_payment_payload(payload_from_hook):
+        return str(payload_from_hook).strip()
+    if _looks_like_payment_payload(getattr(autopay, 'payload', None)):
+        return str(autopay.payload).strip()
+    return build_recurrent_payload(
+        int(autopay.user_id),
+        str(autopay.duration),
+        int(autopay.amount),
+        white=bool(getattr(autopay, 'white', False)),
+        source=getattr(autopay, 'source', None),
+    )
+
+
 class PlategaRecurrentClient:
     base_url = 'https://app.platega.io'
 
@@ -451,6 +471,7 @@ async def handle_subscription_charge_webhook(data: Dict[str, Any]) -> None:
         except (TypeError, ValueError):
             pm_int = None
 
+    pay_payload = resolve_charge_payload(autopay, payload_from_hook)
     row = await sql.add_platega_recurent_payment(
         user_id=int(autopay.user_id),
         subscription_id=subscription_id,
@@ -459,7 +480,7 @@ async def handle_subscription_charge_webhook(data: Dict[str, Any]) -> None:
         currency=currency,
         status=status_raw,
         payment_method=pm_int,
-        payload=str(payload_from_hook) if payload_from_hook else autopay.payload,
+        payload=pay_payload,
         next_charge_at=next_charge_at,
     )
     if row and row.processed:
@@ -480,7 +501,6 @@ async def handle_subscription_charge_webhook(data: Dict[str, Any]) -> None:
                 subscription_id, 'active', next_charge_at=next_charge_at,
             )
 
-        pay_payload = autopay.payload or str(payload_from_hook or '')
         if pay_payload:
             ok = await process_confirmed_payment(pay_payload)
             if ok:

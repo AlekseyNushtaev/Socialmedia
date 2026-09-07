@@ -11,6 +11,7 @@ from utils.menu_photos import init_menu_photos
 from config_bd.models import create_tables, engine
 from config_bd.migrate_users_wl_fields import migrate as migrate_wl_fields
 from config_bd.migrate_wl_traffic_meta import migrate as migrate_wl_traffic_meta
+from config_bd.migrate_platega_recurent_payload import migrate as migrate_platega_recurent_payload
 from payments import pay_stars, pay_cryptobot, pay_platega, pay_freekassa, pay_wl_traffic, pay_platega_recurrent
 from sheduler.check_connect import check_connect
 from sheduler.check_cryptobot import check_cryptobot_payments
@@ -54,6 +55,7 @@ async def main() -> None:
     await create_tables()
     await migrate_wl_fields()
     await migrate_wl_traffic_meta()
+    await migrate_platega_recurent_payload()
 
     # Инициализация диспетчера
     dp: Dispatcher = Dispatcher()
